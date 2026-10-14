@@ -6,10 +6,19 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import engine, get_db
-from app.models import Note, Tag
-from app.schemas import NoteCreate, NoteRead, NoteUpdate
+from app.models import Note, NoteRelation, Tag
+from app.schemas import (
+    GraphNoteRead,
+    GraphRead,
+    NoteCreate,
+    NoteRead,
+    NoteUpdate,
+    RelationCreate,
+    RelationRead,
+)
 
 from pathlib import Path
+from collections import deque
 
 app = FastAPI(
     title="Recall",
@@ -216,6 +225,218 @@ def get_note(
         )
 
     return note_to_dict(note)
+
+
+@app.post(
+    "/notes/{note_id}/relations",
+    response_model=RelationRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_note_relation(
+    note_id: int,
+    relation_data: RelationCreate,
+    db: Annotated[Session, Depends(get_db)],
+) -> NoteRelation:
+    source_note = db.get(Note, note_id)
+
+    if source_note is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Source note not found",
+        )
+
+    target_note = db.get(Note, relation_data.target_note_id)
+
+    if target_note is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Target note not found",
+        )
+
+    if note_id == relation_data.target_note_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A note cannot be related to itself",
+        )
+
+    relation_type = relation_data.relation_type.strip().lower()
+
+    if not relation_type:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Relation type cannot be empty",
+        )
+
+    existing_relation = (
+        db.query(NoteRelation)
+        .filter(
+            NoteRelation.source_note_id == note_id,
+            NoteRelation.target_note_id == relation_data.target_note_id,
+            NoteRelation.relation_type == relation_type,
+        )
+        .first()
+    )
+
+    if existing_relation is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This relation already exists",
+        )
+
+    relation = NoteRelation(
+        source_note_id=note_id,
+        target_note_id=relation_data.target_note_id,
+        relation_type=relation_type,
+    )
+
+    db.add(relation)
+    db.commit()
+    db.refresh(relation)
+
+    return relation
+
+
+@app.get(
+    "/notes/{note_id}/relations",
+    response_model=list[RelationRead],
+)
+def list_note_relations(
+    note_id: int,
+    db: Annotated[Session, Depends(get_db)],
+) -> list[NoteRelation]:
+    note = db.get(Note, note_id)
+
+    if note is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Note not found",
+        )
+
+    relations = (
+        db.query(NoteRelation)
+        .filter(
+            (NoteRelation.source_note_id == note_id)
+            | (NoteRelation.target_note_id == note_id)
+        )
+        .order_by(NoteRelation.id)
+        .all()
+    )
+
+    return relations
+
+@app.delete(
+    "/notes/{note_id}/relations/{relation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_note_relation(
+    note_id: int,
+    relation_id: int,
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    relation = (
+        db.query(NoteRelation)
+        .filter(
+            NoteRelation.id == relation_id,
+            (
+                (NoteRelation.source_note_id == note_id)
+                | (NoteRelation.target_note_id == note_id)
+            ),
+        )
+        .first()
+    )
+
+    if relation is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Relation not found",
+        )
+
+    db.delete(relation)
+    db.commit()
+
+
+
+from collections import deque
+
+
+@app.get(
+    "/notes/{note_id}/graph",
+    response_model=GraphRead,
+)
+def get_note_graph(
+    note_id: int,
+    depth: int = 2,
+    db: Annotated[Session, Depends(get_db)] = None,
+) -> GraphRead:
+    if depth < 1 or depth > 5:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Depth must be between 1 and 5",
+        )
+
+    start_note = db.get(Note, note_id)
+    if start_note is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Note not found",
+        )
+
+    queue = deque([(note_id, 0)])
+    visited = {note_id}
+    found_notes = []
+    found_relations = {}
+
+    while queue:
+        current_id, current_depth = queue.popleft()
+
+        if current_depth >= depth:
+            continue
+
+        relations = (
+            db.query(NoteRelation)
+            .filter(
+                (NoteRelation.source_note_id == current_id)
+                | (NoteRelation.target_note_id == current_id)
+            )
+            .order_by(NoteRelation.id)
+            .all()
+        )
+
+        for relation in relations:
+            found_relations[relation.id] = relation
+
+            if relation.source_note_id == current_id:
+                neighbor_id = relation.target_note_id
+            else:
+                neighbor_id = relation.source_note_id
+
+            if neighbor_id in visited:
+                continue
+
+            visited.add(neighbor_id)
+            next_depth = current_depth + 1
+            neighbor = db.get(Note, neighbor_id)
+
+            if neighbor is not None:
+                found_notes.append(
+                    GraphNoteRead(
+                        id=neighbor.id,
+                        title=neighbor.title,
+                        depth=next_depth,
+                    )
+                )
+                queue.append((neighbor_id, next_depth))
+
+    return GraphRead(
+        start_note_id=note_id,
+        depth=depth,
+        notes=found_notes,
+        relations=[
+            RelationRead.model_validate(relation, from_attributes=True)
+            for relation in found_relations.values()
+        ],
+    )
+
 
 
 @app.patch("/notes/{note_id}/favorite", response_model=NoteRead)

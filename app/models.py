@@ -1,12 +1,14 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
     String,
     Table,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -62,6 +64,20 @@ class Note(Base):
     secondary=note_tags,
     back_populates="notes",
     )
+    outgoing_relations: Mapped[list["NoteRelation"]] = relationship(
+        foreign_keys="NoteRelation.source_note_id",
+        back_populates="source_note",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    incoming_relations: Mapped[list["NoteRelation"]] = relationship(
+        foreign_keys="NoteRelation.target_note_id",
+        back_populates="target_note",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
 
     
 class Tag(Base):
@@ -73,5 +89,55 @@ class Tag(Base):
     notes: Mapped[list["Note"]] = relationship(
         secondary=note_tags,
         back_populates="tags",
+    )
+
+
+
+class NoteRelation(Base):
+    __tablename__ = "note_relations"
+
+    __table_args__ = (
+        CheckConstraint(
+            "source_note_id != target_note_id",
+            name="ck_note_relations_different_notes",
+        ),
+        UniqueConstraint(
+            "source_note_id",
+            "target_note_id",
+            "relation_type",
+            name="uq_note_relations_edge",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    source_note_id: Mapped[int] = mapped_column(
+        ForeignKey("notes.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    target_note_id: Mapped[int] = mapped_column(
+        ForeignKey("notes.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    relation_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    source_note: Mapped["Note"] = relationship(
+        foreign_keys=[source_note_id],
+        back_populates="outgoing_relations",
+    )
+
+    target_note: Mapped["Note"] = relationship(
+        foreign_keys=[target_note_id],
+        back_populates="incoming_relations",
     )
 

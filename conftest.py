@@ -10,7 +10,7 @@ load_dotenv()
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import Note, Tag, note_tags
+from app.models import Note, NoteRelation, Tag, note_tags
 
 
 @pytest.fixture(scope="session")
@@ -46,6 +46,7 @@ def test_engine():
 def client(test_engine):
     # Удаляем данные перед каждым тестом.
     with test_engine.begin() as connection:
+        connection.execute(delete(NoteRelation))
         connection.execute(delete(note_tags))
         connection.execute(delete(Note))
         connection.execute(delete(Tag))
