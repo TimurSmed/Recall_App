@@ -6,6 +6,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Recall — мои заметки</title>
   <style>
+
+    .note-title-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .note-title-row h3 {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .favorite-button {
+      flex-shrink: 0;
+      padding: 3px 8px;
+      border: none;
+      font-size: 26px;
+      line-height: 1.2;
+      color: #777;
+    }
+
+    .favorite-button:hover {
+      background: #f7f3e8;
+    }
+
+    .favorite-button.is-favorite {
+      color: #d99a00;
+    }
     
     * {
     box-sizing: border-box;
@@ -298,10 +327,12 @@
 
       <form id="search-form" class="actions">
         <input id="search" placeholder="Поиск по заметкам..."
-               style="flex: 1; min-width: 180px; margin: 0">
+              style="flex: 1; min-width: 180px; margin: 0">
         <button type="submit">Найти</button>
+        <button type="button" id="show-favorites">⭐ Избранное</button>
         <button type="button" id="show-all">Все заметки</button>
       </form>
+
 
       
       <div id="note-count" class="muted" style="margin: 12px 0"></div>
@@ -309,23 +340,12 @@
       
     
     
+
 <div class="tags-panel">
     <h3>Теги</h3>
-
-    <form id="tag-search-form" class="actions">
-        <input
-            id="tag-search"
-            type="search"
-            placeholder="Найти тег..."
-            autocomplete="off"
-            style="flex: 1; min-width: 180px; margin: 0"
-        >
-        <button type="submit">Найти</button>
-        <button type="button" id="reset-tag-search">Все теги</button>
-    </form>
-
     <div id="all-tags" class="all-tags"></div>
 </div>
+
 
 
       <div id="notes"></div>
@@ -399,7 +419,33 @@
 
       for (const note of notes) {
         const card = makeElement("article", "note");
-        card.append(makeElement("h3", "", note.title));
+
+        const titleRow = makeElement("div", "note-title-row");
+        const title = makeElement("h3", "", note.title);
+
+        const favoriteButton = makeElement(
+          "button",
+          "favorite-button",
+          note.is_favorite ? "★" : "☆"
+        );
+
+        favoriteButton.type = "button";
+        favoriteButton.title = note.is_favorite
+          ? "Убрать из избранного"
+          : "Добавить в избранное";
+        favoriteButton.setAttribute("aria-label", favoriteButton.title);
+
+        if (note.is_favorite) {
+          favoriteButton.classList.add("is-favorite");
+        }
+
+        favoriteButton.addEventListener("click", () => {
+          toggleFavorite(note.id);
+        });
+
+        titleRow.append(title, favoriteButton);
+        card.append(titleRow);
+
         
         const date = note.created_at
         ? new Date(note.created_at)
@@ -465,7 +511,9 @@
     }
 
     async function loadNotes(path = "/notes") {
+      currentView = path;
       clearError();
+
       try {
         const notes = await api(path);
         renderNotes(notes);
@@ -473,6 +521,29 @@
         showError(error.message);
       }
     }
+
+    async function toggleFavorite(noteId) {
+      clearError();
+
+      try {
+        await api(`/notes/${noteId}/favorite`, {
+          method: "PATCH"
+        });
+
+        await refreshCurrentView();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    let currentView = "/notes";
+
+    async function refreshCurrentView() {
+      await loadNotes(currentView);
+      await loadTags();
+    }
+
+
     
     async function loadTags() {
         const container = document.querySelector("#all-tags");
@@ -515,63 +586,6 @@
             showError(`Не удалось загрузить теги: ${error.message}`);
         }
     }
-
-    
-    function filterTags() {
-        const query = document
-            .querySelector("#tag-search")
-            .value
-            .trim()
-            .toLowerCase();
-
-        const buttons = document.querySelectorAll("#all-tags .tag");
-        let visibleCount = 0;
-
-        for (const button of buttons) {
-            const tagName = (button.dataset.tag || button.textContent)
-                .trim()
-                .toLowerCase();
-
-            const matches = tagName.includes(query);
-            button.hidden = !matches;
-
-            if (matches) {
-                visibleCount++;
-            }
-        }
-
-        let message = document.querySelector("#no-tags-found");
-
-        if (!message) {
-            message = document.createElement("p");
-            message.id = "no-tags-found";
-            message.className = "muted";
-            document.querySelector("#all-tags").after(message);
-        }
-
-        message.textContent = visibleCount === 0
-            ? "Теги не найдены."
-            : "";
-
-        message.hidden = visibleCount > 0;
-    }
-
-    document
-        .querySelector("#tag-search-form")
-        .addEventListener("submit", (event) => {
-            event.preventDefault();
-            filterTags();
-        });
-
-    document
-        .querySelector("#reset-tag-search")
-        .addEventListener("click", () => {
-            document.querySelector("#tag-search").value = "";
-            filterTags();
-        });
-
-
-
 
     
     async function filterByTag(tagName) {
@@ -682,9 +696,15 @@
 
     document.querySelector("#show-all").addEventListener("click", async () => {
       document.querySelector("#search").value = "";
-      document.querySelector("#tag-search").value = "";
 
-      await loadNotes();
+      await loadNotes("/notes");
+      await loadTags();
+    });
+
+    document.querySelector("#show-favorites").addEventListener("click", async () => {
+      document.querySelector("#search").value = "";
+
+      await loadNotes("/notes/favorites");
       await loadTags();
     });
 

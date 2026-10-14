@@ -18,6 +18,7 @@ class NoteRead(BaseModel):
     title: str
     content: str
     source_url: str | None
+    is_favorite: bool = False
     created_at: datetime
     updated_at: datetime
     tags: list[str] = Field(default_factory=list)

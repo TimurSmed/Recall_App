@@ -53,6 +53,7 @@ def note_to_dict(note: Note) -> dict:
         "id": note.id,
         "title": note.title,
         "content": note.content,
+        "is_favorite": note.is_favorite,
         "source_url": note.source_url,
         "created_at": note.created_at,
         "updated_at": note.updated_at,
@@ -120,6 +121,21 @@ def list_notes(
     )
 
     return [note_to_dict(note) for note in notes]
+
+
+@app.get("/notes/favorites", response_model=list[NoteRead])
+def list_favorite_notes(
+    db: Annotated[Session, Depends(get_db)],
+) -> list[dict]:
+    notes = (
+        db.query(Note)
+        .filter(Note.is_favorite.is_(True))
+        .order_by(Note.created_at.desc())
+        .all()
+    )
+
+    return [note_to_dict(note) for note in notes]
+
 
 
 
@@ -201,6 +217,26 @@ def get_note(
 
     return note_to_dict(note)
 
+
+@app.patch("/notes/{note_id}/favorite", response_model=NoteRead)
+def toggle_note_favorite(
+    note_id: int,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    note = db.get(Note, note_id)
+
+    if note is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Note not found",
+        )
+
+    note.is_favorite = not note.is_favorite
+
+    db.commit()
+    db.refresh(note)
+
+    return note_to_dict(note)
 
 
 @app.put("/notes/{note_id}", response_model=NoteRead)
