@@ -1,3 +1,6 @@
+from sqlalchemy import event
+from app.database import get_db
+
 def test_root(client):
     response = client.get("/")
 
@@ -429,3 +432,54 @@ def test_graph_handles_cycles_without_duplicates(client):
     found_ids = [note["id"] for note in data["notes"]]
     assert len(found_ids) == len(set(found_ids))
     assert set(found_ids) == {note_b, note_c}
+
+
+def test_graph_loads_relations_in_batches(client, test_engine):
+    note_ids = [
+        create_test_note(client, f"Note {i}")
+        for i in range(6)
+    ]
+
+    # Создаём звездообразный граф:
+    # первая заметка связана с пятью соседями.
+    for target_id in note_ids[1:]:
+        response = client.post(
+            f"/notes/{note_ids[0]}/relations",
+            json={
+                "target_note_id": target_id,
+                "relation_type": "related",
+            },
+        )
+        assert response.status_code == 201
+
+    statements = []
+
+    def count_selects(
+        conn, cursor, statement, parameters, context, executemany
+    ):
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement)
+
+    event.listen(
+        test_engine,
+        "before_cursor_execute",
+        count_selects,
+    )
+
+    try:
+        response = client.get(
+            f"/notes/{note_ids[0]}/graph?depth=1"
+        )
+    finally:
+        event.remove(
+            test_engine,
+            "before_cursor_execute",
+            count_selects,
+        )
+
+    assert response.status_code == 200
+    assert len(response.json()["notes"]) == 5
+
+    # Стартовая заметка проверяется до обхода графа,
+    # а все связи и соседние заметки загружаются пачками.
+    assert len(statements) == 3
