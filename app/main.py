@@ -356,8 +356,6 @@ def delete_note_relation(
 
 
 
-from collections import deque
-
 
 @app.get(
     "/notes/{note_id}/graph",
@@ -381,61 +379,79 @@ def get_note_graph(
             detail="Note not found",
         )
 
-    queue = deque([(note_id, 0)])
     visited = {note_id}
+    frontier = {note_id}
     found_notes = []
     found_relations = {}
 
-    while queue:
-        current_id, current_depth = queue.popleft()
-
-        if current_depth >= depth:
-            continue
+    for current_depth in range(depth):
+        if not frontier:
+            break
 
         relations = (
             db.query(NoteRelation)
             .filter(
-                (NoteRelation.source_note_id == current_id)
-                | (NoteRelation.target_note_id == current_id)
+                (NoteRelation.source_note_id.in_(frontier))
+                | (NoteRelation.target_note_id.in_(frontier))
             )
             .order_by(NoteRelation.id)
             .all()
         )
 
+        next_frontier = set()
+        new_note_ids = set()
+
         for relation in relations:
             found_relations[relation.id] = relation
 
-            if relation.source_note_id == current_id:
+            if relation.source_note_id in frontier:
                 neighbor_id = relation.target_note_id
             else:
                 neighbor_id = relation.source_note_id
 
-            if neighbor_id in visited:
-                continue
+            if neighbor_id not in visited:
+                visited.add(neighbor_id)
+                new_note_ids.add(neighbor_id)
+                next_frontier.add(neighbor_id)
 
-            visited.add(neighbor_id)
-            next_depth = current_depth + 1
-            neighbor = db.get(Note, neighbor_id)
+        if new_note_ids:
+            neighbors = (
+                db.query(Note)
+                .filter(Note.id.in_(new_note_ids))
+                .all()
+            )
+            neighbors_by_id = {
+                note.id: note for note in neighbors
+            }
 
-            if neighbor is not None:
+            for neighbor_id in new_note_ids:
+                neighbor = neighbors_by_id.get(neighbor_id)
+                if neighbor is None:
+                    continue
+
                 found_notes.append(
                     GraphNoteRead(
                         id=neighbor.id,
                         title=neighbor.title,
-                        depth=next_depth,
+                        depth=current_depth + 1,
                     )
                 )
-                queue.append((neighbor_id, next_depth))
+
+        frontier = next_frontier
 
     return GraphRead(
         start_note_id=note_id,
         depth=depth,
         notes=found_notes,
         relations=[
-            RelationRead.model_validate(relation, from_attributes=True)
+            RelationRead.model_validate(
+                relation,
+                from_attributes=True,
+            )
             for relation in found_relations.values()
         ],
     )
+
 
 
 
