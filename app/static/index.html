@@ -1,0 +1,695 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recall — мои заметки</title>
+  <style>
+    
+    * {
+    box-sizing: border-box;
+    }
+
+    body {
+    margin: 0;
+    background: #f7f7f8;
+    color: #252525;
+    font-family: "Segoe UI", Arial, sans-serif;
+    line-height: 1.6;
+    }
+
+    .container {
+    width: min(760px, 92%);
+    margin: 48px auto;
+    }
+
+    header {
+    margin-bottom: 30px;
+    }
+
+    h1 {
+    margin: 0;
+    font-size: 34px;
+    letter-spacing: -1px;
+    }
+
+    h2 {
+    margin: 0 0 18px;
+    font-size: 21px;
+    }
+
+    .muted {
+    color: #777;
+    font-size: 14px;
+    }
+
+    .panel,
+    .note {
+    background: #fff;
+    border: 1px solid #e7e7e9;
+    border-radius: 14px;
+    padding: 24px;
+    margin-bottom: 18px;
+    box-shadow: 0 3px 12px rgb(0 0 0 / 3%);
+    }
+
+    label {
+    display: block;
+    margin: 12px 0 6px;
+    font-size: 14px;
+    font-weight: 600;
+    }
+
+    input,
+    textarea {
+    display: block;
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid #dedee3;
+    border-radius: 9px;
+    background: #fff;
+    color: #252525;
+    font: inherit;
+    outline: none;
+    margin: 0 0 14px;
+    }
+
+    input:focus,
+    textarea:focus {
+    border-color: #777;
+    box-shadow: 0 0 0 3px rgb(0 0 0 / 5%);
+    }
+
+    textarea {
+    min-height: 130px;
+    resize: vertical;
+    }
+
+    button {
+    padding: 10px 15px;
+    border: 1px solid #dedee3;
+    border-radius: 9px;
+    background: #fff;
+    color: #252525;
+    font: inherit;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    }
+
+    button:hover {
+    background: #f0f0f2;
+    }
+
+    button.primary {
+    background: #252525;
+    color: #fff;
+    border-color: #252525;
+    }
+
+    button.primary:hover {
+    background: #444;
+    }
+
+    .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    }
+
+    .section-heading {
+    margin: 30px 0 14px;
+    }
+
+    #search-form {
+    margin-bottom: 16px;
+    }
+
+    #search {
+    flex: 1;
+    min-width: 180px;
+    margin: 0;
+    }
+
+    .note h3 {
+    margin: 0 0 12px;
+    font-size: 19px;
+    overflow-wrap: anywhere;
+    }
+
+    .note-content {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    }
+
+    .note-source {
+    margin-top: 12px;
+    }
+
+    .note-source a {
+    color: #555;
+    overflow-wrap: anywhere;
+    }
+
+    .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 16px;
+    }
+
+    
+    .tag {
+    padding: 5px 11px;
+    border: none;
+    border-radius: 20px;
+    background: #f0f0f2;
+    color: #444;
+    font-size: 12px;
+    cursor: pointer;
+    }
+
+    .tag:hover {
+    background: #dedee3;
+    }
+
+
+    .note-actions {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid #eee;
+    }
+
+    .error {
+    color: #b42318;
+    margin-bottom: 12px;
+    }
+
+    .hidden {
+    display: none;
+    }
+
+    .empty {
+    padding: 30px;
+    text-align: center;
+    color: #777;
+    background: #fff;
+    border: 1px dashed #ddd;
+    border-radius: 12px;
+    }
+
+    @media (max-width: 500px) {
+    .container {
+        margin: 28px auto;
+    }
+
+    .panel,
+    .note {
+        padding: 17px;
+    }
+
+    h1 {
+        font-size: 29px;
+    }
+    }
+    
+    .note-date {
+    margin: -6px 0 14px;
+    font-size: 12px;
+    }
+
+    
+    .tags-panel {
+    margin: 20px 0;
+    padding: 18px;
+    background: #fff;
+    border: 1px solid #e7e7e9;
+    border-radius: 12px;
+    }
+
+    .tags-panel h3 {
+    margin: 0 0 12px;
+    font-size: 16px;
+    }
+
+    .all-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    }
+
+    .all-tags .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    }
+
+    .tag-count {
+    color: #777;
+    font-size: 11px;
+    }
+
+
+
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>Recall</h1>
+      <div class="muted">Твоя личная база знаний</div>
+    </header>
+
+    <section class="panel">
+      <h2 id="form-heading">Новая заметка</h2>
+
+      <div id="error" class="error hidden"></div>
+
+      <form id="note-form">
+        <label for="title">Название</label>
+        <input id="title" maxlength="255" required
+               placeholder="Например, как работает SQLAlchemy">
+
+        <label for="content">Содержание</label>
+        <textarea id="content" required
+                  placeholder="Запиши свою мысль..."></textarea>
+
+        <label for="source-url">Ссылка на источник (необязательно)</label>
+        <input id="source-url" type="url"
+               placeholder="https://example.com">
+
+        <label for="tags">Теги через запятую</label>
+        <input id="tags" placeholder="python, backend, идеи">
+
+        <div class="actions">
+          <button class="primary" type="submit" id="save-button">
+            Сохранить заметку
+          </button>
+          <button type="button" id="cancel-button" class="hidden">
+            Отмена
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <section>
+      <h2 class="section-heading">Мои заметки</h2>
+
+      <form id="search-form" class="actions">
+        <input id="search" placeholder="Поиск по заметкам..."
+               style="flex: 1; min-width: 180px; margin: 0">
+        <button type="submit">Найти</button>
+        <button type="button" id="show-all">Все заметки</button>
+      </form>
+
+      
+      <div id="note-count" class="muted" style="margin: 12px 0"></div>
+
+      
+    
+    
+<div class="tags-panel">
+    <h3>Теги</h3>
+
+    <form id="tag-search-form" class="actions">
+        <input
+            id="tag-search"
+            type="search"
+            placeholder="Найти тег..."
+            autocomplete="off"
+            style="flex: 1; min-width: 180px; margin: 0"
+        >
+        <button type="submit">Найти</button>
+        <button type="button" id="reset-tag-search">Все теги</button>
+    </form>
+
+    <div id="all-tags" class="all-tags"></div>
+</div>
+
+
+      <div id="notes"></div>
+
+    </section>
+  </main>
+
+  <script>
+    const form = document.querySelector("#note-form");
+    const titleInput = document.querySelector("#title");
+    const contentInput = document.querySelector("#content");
+    const sourceInput = document.querySelector("#source-url");
+    const tagsInput = document.querySelector("#tags");
+    const notesContainer = document.querySelector("#notes");
+    const errorBox = document.querySelector("#error");
+
+    let editingId = null;
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...options.headers
+        }
+      });
+
+      if (!response.ok) {
+        let message = `Ошибка сервера: ${response.status}`;
+        try {
+          const data = await response.json();
+          message = data.detail || message;
+        } catch {}
+        throw new Error(
+          typeof message === "string" ? message : JSON.stringify(message)
+        );
+      }
+
+      if (response.status === 204) return null;
+      return response.json();
+    }
+
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.classList.remove("hidden");
+    }
+
+    function clearError() {
+      errorBox.textContent = "";
+      errorBox.classList.add("hidden");
+    }
+
+    function makeElement(tag, className, text) {
+      const element = document.createElement(tag);
+      if (className) element.className = className;
+      if (text !== undefined) element.textContent = text;
+      return element;
+    }
+
+    function renderNotes(notes) {
+      notesContainer.replaceChildren();
+      document.querySelector("#note-count").textContent =
+        `Заметок: ${notes.length}`;
+
+      if (!notes.length) {
+        notesContainer.append(
+          makeElement("div", "empty", "Заметок пока нет.")
+        );
+        return;
+      }
+
+      for (const note of notes) {
+        const card = makeElement("article", "note");
+        card.append(makeElement("h3", "", note.title));
+        
+        const date = note.created_at
+        ? new Date(note.created_at)
+        : null;
+
+        const dateText = date && !Number.isNaN(date.getTime())
+        ? date.toLocaleString("ru-RU", {
+            day: "2-digit",
+            month: "long",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit"
+            })
+        : "Дата неизвестна";
+
+        card.append(makeElement("div", "muted note-date", dateText));
+
+        card.append(makeElement("div", "note-content", note.content));
+
+        if (note.source_url) {
+          const source = makeElement("div", "note-source");
+          const link = makeElement("a", "", "Открыть источник");
+          link.href = note.source_url;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          source.append(link);
+          card.append(source);
+        }
+
+        
+        if (note.tags?.length) {
+        const tags = makeElement("div", "tags");
+
+        for (const name of note.tags) {
+            const tagButton = makeElement("button", "tag", name);
+            tagButton.type = "button";
+            tagButton.title = `Показать заметки с тегом ${name}`;
+
+            tagButton.addEventListener("click", () => {
+            filterByTag(name);
+            });
+
+            tags.append(tagButton);
+        }
+
+        card.append(tags);
+        }
+
+
+        const actions = makeElement("div", "actions note-actions");
+        const editButton = makeElement("button", "", "Редактировать");
+        editButton.type = "button";
+        editButton.addEventListener("click", () => startEditing(note));
+
+        const deleteButton = makeElement("button", "", "Удалить");
+        deleteButton.type = "button";
+        deleteButton.addEventListener("click", () => deleteNote(note.id));
+
+        actions.append(editButton, deleteButton);
+        card.append(actions);
+        notesContainer.append(card);
+      }
+    }
+
+    async function loadNotes(path = "/notes") {
+      clearError();
+      try {
+        const notes = await api(path);
+        renderNotes(notes);
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+    
+    async function loadTags() {
+        const container = document.querySelector("#all-tags");
+        container.replaceChildren();
+
+        try {
+            const tags = await api("/tags");
+
+            if (!tags.length) {
+            container.append(
+                makeElement("span", "muted", "Пока нет тегов")
+            );
+            return;
+            }
+
+            for (const tag of tags) {
+            const button = makeElement("button", "tag");
+            button.type = "button";
+            button.dataset.tag = tag.name.toLowerCase();
+            button.append(
+                document.createTextNode(tag.name + " ")
+            );
+
+            const count = makeElement(
+                "span",
+                "tag-count",
+                String(tag.notes_count)
+            );
+
+            button.append(count);
+            button.title = `Показать заметки с тегом ${tag.name}`;
+
+            button.addEventListener("click", () => {
+                filterByTag(tag.name);
+            });
+
+            container.append(button);
+            }
+        } catch (error) {
+            showError(`Не удалось загрузить теги: ${error.message}`);
+        }
+    }
+
+    
+    function filterTags() {
+        const query = document
+            .querySelector("#tag-search")
+            .value
+            .trim()
+            .toLowerCase();
+
+        const buttons = document.querySelectorAll("#all-tags .tag");
+        let visibleCount = 0;
+
+        for (const button of buttons) {
+            const tagName = (button.dataset.tag || button.textContent)
+                .trim()
+                .toLowerCase();
+
+            const matches = tagName.includes(query);
+            button.hidden = !matches;
+
+            if (matches) {
+                visibleCount++;
+            }
+        }
+
+        let message = document.querySelector("#no-tags-found");
+
+        if (!message) {
+            message = document.createElement("p");
+            message.id = "no-tags-found";
+            message.className = "muted";
+            document.querySelector("#all-tags").after(message);
+        }
+
+        message.textContent = visibleCount === 0
+            ? "Теги не найдены."
+            : "";
+
+        message.hidden = visibleCount > 0;
+    }
+
+    document
+        .querySelector("#tag-search-form")
+        .addEventListener("submit", (event) => {
+            event.preventDefault();
+            filterTags();
+        });
+
+    document
+        .querySelector("#reset-tag-search")
+        .addEventListener("click", () => {
+            document.querySelector("#tag-search").value = "";
+            filterTags();
+        });
+
+
+
+
+    
+    async function filterByTag(tagName) {
+    document.querySelector("#search").value = "";
+    clearError();
+
+    try {
+        const notes = await api(
+        `/tags/${encodeURIComponent(tagName)}/notes`
+        );
+        renderNotes(notes);
+        document.querySelector("#note-count").textContent =
+        `Тег: ${tagName} · Заметок: ${notes.length}`;
+    } catch (error) {
+        showError(error.message);
+    }
+    }
+
+
+    function resetForm() {
+      editingId = null;
+      form.reset();
+      clearError();
+      document.querySelector("#form-heading").textContent = "Новая заметка";
+      document.querySelector("#save-button").textContent = "Сохранить заметку";
+      document.querySelector("#cancel-button").classList.add("hidden");
+    }
+
+    function startEditing(note) {
+      editingId = note.id;
+      titleInput.value = note.title;
+      contentInput.value = note.content;
+      sourceInput.value = note.source_url || "";
+      tagsInput.value = (note.tags || []).join(", ");
+
+      document.querySelector("#form-heading").textContent =
+        "Редактирование заметки";
+      document.querySelector("#save-button").textContent = "Сохранить изменения";
+      document.querySelector("#cancel-button").classList.remove("hidden");
+      clearError();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      titleInput.focus();
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      clearError();
+
+      const payload = {
+        title: titleInput.value.trim(),
+        content: contentInput.value.trim(),
+        source_url: sourceInput.value.trim() || null,
+        tags: tagsInput.value
+          .split(",")
+          .map(tag => tag.trim())
+          .filter(Boolean)
+      };
+
+      try {
+        const path = editingId === null
+          ? "/notes"
+          : `/notes/${editingId}`;
+
+        await api(path, {
+          method: editingId === null ? "POST" : "PUT",
+          body: JSON.stringify(payload)
+        });
+
+        resetForm();
+        await loadNotes();
+        await loadTags();
+      } catch (error) {
+        showError(error.message);
+      }
+    });
+
+    async function deleteNote(id) {
+      if (!confirm("Удалить эту заметку?")) return;
+
+      clearError();
+      try {
+        await api(`/notes/${id}`, { method: "DELETE" });
+        if (editingId === id) resetForm();
+        await loadNotes();
+        await loadTags();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    document.querySelector("#cancel-button").addEventListener(
+      "click", resetForm
+    );
+
+    document.querySelector("#search-form").addEventListener(
+      "submit", async (event) => {
+        event.preventDefault();
+        const query = document.querySelector("#search").value.trim();
+
+        if (!query) {
+          await loadNotes();
+          return;
+        }
+
+        await loadNotes(`/notes/search?q=${encodeURIComponent(query)}`);
+      }
+    );
+
+    document.querySelector("#show-all").addEventListener("click", async () => {
+      document.querySelector("#search").value = "";
+      document.querySelector("#tag-search").value = "";
+
+      await loadNotes();
+      await loadTags();
+    });
+
+    loadNotes();
+    loadTags();
+  </script>
+</body>
+</html>
