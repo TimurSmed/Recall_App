@@ -279,6 +279,114 @@
     font-size: 11px;
     }
 
+    .graph-panel {
+      margin: 20px 0;
+      padding: 18px;
+      background: #fff;
+      border: 1px solid #e7e7e9;
+      border-radius: 12px;
+    }
+
+    .graph-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .graph-controls label {
+      margin-top: 0;
+    }
+
+    .graph-controls select {
+      padding: 10px;
+      border: 1px solid #dedee3;
+      border-radius: 9px;
+      font: inherit;
+      max-width: 100%;
+    }
+
+    #graph-canvas {
+      width: 100%;
+      min-height: 260px;
+      overflow: hidden;
+      border: 1px solid #eee;
+      border-radius: 10px;
+      background: #fafafa;
+    }
+
+    #graph-canvas svg {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .graph-edge {
+      stroke: #b8bbc4;
+      stroke-width: 2;
+    }
+
+    
+    .graph-edge-label {
+      fill: #666;
+      font-size: 11px;
+      text-anchor: middle;
+      dominant-baseline: middle;
+      paint-order: stroke;
+      stroke: #fafafa;
+      stroke-width: 4px;
+      stroke-linejoin: round;
+      pointer-events: none;
+    }
+
+
+    .graph-node {
+      fill: #fff;
+      stroke: #777;
+      stroke-width: 1.5;
+    }
+
+    .graph-node-start {
+      fill: #252525;
+      stroke: #252525;
+    }
+
+    .graph-node-group {
+      cursor: pointer;
+      transition: opacity 0.15s ease;
+    }
+
+    .graph-node-group:hover .graph-node {
+      stroke: #2563eb;
+      stroke-width: 3;
+    }
+
+    .graph-node-group:focus .graph-node {
+      stroke: #2563eb;
+      stroke-width: 3;
+    }
+
+    .graph-node-group:focus {
+      outline: none;
+    }
+
+    .graph-label {
+      fill: #252525;
+      font-size: 12px;
+      text-anchor: middle;
+    }
+
+    .graph-label-start {
+      fill: #fff;
+    }
+
+    .graph-empty {
+      padding: 24px;
+      color: #777;
+      text-align: center;
+    }
+
 
 
   </style>
@@ -345,6 +453,39 @@
     <h3>Теги</h3>
     <div id="all-tags" class="all-tags"></div>
 </div>
+<section class="graph-panel">
+  <h2>Граф заметок</h2>
+  <p class="muted">Связи между заметками на основе созданных отношений.</p>
+
+  <div class="graph-controls">
+    <div>
+      <label for="graph-start">Начальная заметка</label>
+      <select id="graph-start">
+        <option value="">Загрузка заметок...</option>
+      </select>
+    </div>
+
+    <div>
+      <label for="graph-depth">Глубина связей</label>
+      <select id="graph-depth">
+        <option value="1">1 уровень</option>
+        <option value="2" selected>2 уровня</option>
+        <option value="3">3 уровня</option>
+        <option value="4">4 уровня</option>
+        <option value="5">5 уровней</option>
+      </select>
+    </div>
+
+    <button type="button" id="load-graph" class="primary">
+      Показать граф
+    </button>
+  </div>
+
+  <div id="graph-status" class="muted" role="status"></div>
+  <div id="graph-canvas">
+    <div class="graph-empty">Выбери начальную заметку.</div>
+  </div>
+</section>
 
 
 
@@ -509,6 +650,268 @@
         notesContainer.append(card);
       }
     }
+
+    const graphStartSelect = document.querySelector("#graph-start");
+    const graphDepthSelect = document.querySelector("#graph-depth");
+    const graphStatus = document.querySelector("#graph-status");
+    const graphCanvas = document.querySelector("#graph-canvas");
+
+    async function loadGraphOptions() {
+      try {
+        const notes = await api("/notes");
+
+        graphStartSelect.replaceChildren();
+
+        if (!notes.length) {
+          graphStartSelect.append(
+            makeElement("option", "", "Нет заметок")
+          );
+          graphStartSelect.disabled = true;
+          graphStatus.textContent = "Сначала создай заметку.";
+          return;
+        }
+
+        graphStartSelect.disabled = false;
+
+        for (const note of notes) {
+          const option = document.createElement("option");
+          option.value = note.id;
+          option.textContent = `#${note.id} — ${note.title}`;
+          graphStartSelect.append(option);
+        }
+
+        graphStatus.textContent =
+          `Доступно заметок: ${notes.length}`;
+      } catch (error) {
+        graphStatus.textContent =
+          `Не удалось загрузить заметки: ${error.message}`;
+      }
+    }
+
+      function renderGraph(graph) {
+        graphCanvas.replaceChildren();
+
+        const startOption = graphStartSelect.selectedOptions[0];
+        const startTitle = startOption
+          ? startOption.textContent
+          : `Заметка #${graph.start_note_id}`;
+
+        const nodes = [
+          {
+            id: graph.start_note_id,
+            title: startTitle,
+            depth: 0
+          },
+          ...graph.notes
+        ];
+
+        if (graph.relations.length === 0) {
+          graphCanvas.append(
+            makeElement(
+              "div",
+              "graph-empty",
+              "Связей пока нет. Создай отношение между заметками, чтобы увидеть граф."
+            )
+          );
+          return;
+        }
+
+        const width = 720;
+        const height = Math.max(300, nodes.length * 100);
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const radius = Math.min(width * 0.34, height * 0.38);
+
+        const positions = new Map();
+
+        nodes.forEach((node, index) => {
+          if (index === 0) {
+            positions.set(node.id, { x: centerX, y: centerY });
+            return;
+          }
+
+          const angle =
+            (2 * Math.PI * (index - 1)) / (nodes.length - 1)
+            - Math.PI / 2;
+
+          positions.set(node.id, {
+            x: centerX + radius * Math.cos(angle),
+            y: centerY + radius * Math.sin(angle)
+          });
+        });
+
+        const svgNS = "http://www.w3.org/2000/svg";
+        const svg = document.createElementNS(svgNS, "svg");
+        svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+        svg.setAttribute("role", "img");
+        svg.setAttribute("aria-label", "Граф связанных заметок");
+
+        function svgElement(tag, attributes, text) {
+          const element = document.createElementNS(svgNS, tag);
+
+          for (const [name, value] of Object.entries(attributes)) {
+            element.setAttribute(name, value);
+          }
+
+          if (text !== undefined) {
+            element.textContent = text;
+          }
+
+          return element;
+        }
+
+        const nodeIds = new Set(nodes.map(node => node.id));
+      
+        for (const relation of graph.relations) {
+          if (
+            !nodeIds.has(relation.source_note_id) ||
+            !nodeIds.has(relation.target_note_id)
+          ) {
+            continue;
+          }
+
+          const source = positions.get(relation.source_note_id);
+          const target = positions.get(relation.target_note_id);
+
+          if (!source || !target) continue;
+
+          svg.append(
+            svgElement("line", {
+              x1: source.x,
+              y1: source.y,
+              x2: target.x,
+              y2: target.y,
+              class: "graph-edge"
+            })
+          );
+          
+          
+          const labelX = (source.x + target.x) / 2;
+          const labelY = (source.y + target.y) / 2;
+
+          const dx = target.x - source.x;
+          const dy = target.y - source.y;
+          const length = Math.hypot(dx, dy) || 1;
+
+          const textX = labelX - (dy / length) * 14;
+          const textY = labelY + (dx / length) * 14;
+
+          svg.append(svgElement("text", {
+            x: textX,
+            y: textY,
+            class: "graph-edge-label"
+          }, relation.relation_type));
+
+
+        }
+
+        for (const node of nodes) {
+          const position = positions.get(node.id);
+          const isStart = node.id === graph.start_note_id;
+          const group = svgElement("g", {});
+          group.setAttribute("class", "graph-node-group");
+
+          group.style.cursor = "pointer";
+          group.setAttribute("role", "button");
+          group.setAttribute("tabindex", "0");
+          group.setAttribute(
+            "aria-label",
+            `Открыть граф от заметки: ${node.title}`
+          );
+
+          function openFromNode() {
+            graphStartSelect.value = String(node.id);
+            loadGraph();
+          }
+
+          group.addEventListener("click", openFromNode);
+
+          group.addEventListener("keydown", event => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              openFromNode();
+            }
+          });
+
+          group.append(
+            svgElement("circle", {
+              cx: position.x,
+              cy: position.y,
+              r: 28,
+              class: isStart
+                ? "graph-node graph-node-start"
+                : "graph-node"
+            })
+          );
+
+          group.append(
+            svgElement("text", {
+              x: position.x,
+              y: position.y + 4,
+              class: isStart
+                ? "graph-label graph-label-start"
+                : "graph-label"
+            }, `#${node.id}`)
+          );
+
+          const label =
+            node.title.length > 24
+              ? `${node.title.slice(0, 21)}...`
+              : node.title;
+
+          group.append(
+            svgElement("text", {
+              x: position.x,
+              y: position.y + 46,
+              class: "graph-label"
+            }, label)
+          );
+
+          svg.append(group);
+        }
+
+        graphCanvas.append(svg);
+      }
+
+
+    async function loadGraph() {
+      const noteId = graphStartSelect.value;
+      const depth = graphDepthSelect.value;
+
+      if (!noteId) {
+        graphStatus.textContent = "Выбери начальную заметку.";
+        return;
+      }
+
+      graphStatus.textContent = "Загружаю граф...";
+      graphCanvas.replaceChildren();
+
+      try {
+        const graph = await api(
+          `/notes/${noteId}/graph?depth=${depth}`
+        );
+
+        graphStatus.textContent =
+          `Найдено связанных заметок: ${graph.notes.length}. ` +
+          `Связей: ${graph.relations.length}.`;
+
+        renderGraph(graph);
+      } catch (error) {
+        graphStatus.textContent =
+          `Не удалось загрузить граф: ${error.message}`;
+        graphCanvas.replaceChildren(
+          makeElement("div", "graph-empty", error.message)
+        );
+      }
+    }
+
+    document.querySelector("#load-graph").addEventListener(
+      "click",
+      loadGraph
+    );
+
+    loadGraphOptions();
+
 
     async function loadNotes(path = "/notes") {
       currentView = path;
