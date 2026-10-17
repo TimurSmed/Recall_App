@@ -433,13 +433,36 @@
     <section>
       <h2 class="section-heading">Мои заметки</h2>
 
+            
       <form id="search-form" class="actions">
-        <input id="search" placeholder="Поиск по заметкам..."
-              style="flex: 1; min-width: 180px; margin: 0">
+        <input
+          id="search"
+          placeholder="Поиск по названию, содержимому или тегу..."
+          style="flex: 1; min-width: 180px; margin: 0"
+        >
         <button type="submit">Найти</button>
         <button type="button" id="show-favorites">⭐ Избранное</button>
         <button type="button" id="show-all">Все заметки</button>
       </form>
+
+      <div class="graph-controls" style="margin-bottom: 20px">
+        <div>
+          <label for="sort-by">Сортировка</label>
+          <select id="sort-by">
+            <option value="created_at">Сначала новые</option>
+            <option value="updated_at">Недавно изменённые</option>
+            <option value="title">По названию: А–Я</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="tag-filter">Фильтр по тегу</label>
+          <select id="tag-filter">
+            <option value="">Все теги</option>
+          </select>
+        </div>
+      </div>
+
 
 
       
@@ -948,47 +971,71 @@
 
 
     
+    
     async function loadTags() {
         const container = document.querySelector("#all-tags");
+        const tagFilter = document.querySelector("#tag-filter");
+
         container.replaceChildren();
 
         try {
             const tags = await api("/tags");
 
-            if (!tags.length) {
-            container.append(
-                makeElement("span", "muted", "Пока нет тегов")
-            );
-            return;
-            }
+            // Заполняем выпадающий список
+            const selectedTag = tagFilter.value;
+            tagFilter.replaceChildren();
+
+            const allOption = document.createElement("option");
+            allOption.value = "";
+            allOption.textContent = "Все теги";
+            tagFilter.appendChild(allOption);
 
             for (const tag of tags) {
-            const button = makeElement("button", "tag");
-            button.type = "button";
-            button.dataset.tag = tag.name.toLowerCase();
-            button.append(
-                document.createTextNode(tag.name + " ")
-            );
+                const option = document.createElement("option");
+                option.value = tag.name;
+                option.textContent = `${tag.name} (${tag.notes_count})`;
+                tagFilter.appendChild(option);
+            }
 
-            const count = makeElement(
-                "span",
-                "tag-count",
-                String(tag.notes_count)
-            );
+            // Сохраняем выбор, если такой тег ещё существует
+            tagFilter.value = selectedTag;
 
-            button.append(count);
-            button.title = `Показать заметки с тегом ${tag.name}`;
+            // Если тегов нет, показываем сообщение
+            if (!tags.length) {
+                container.append(
+                    makeElement("span", "muted", "Пока нет тегов")
+                );
+                return;
+            }
 
-            button.addEventListener("click", () => {
-                filterByTag(tag.name);
-            });
+            // Создаём кнопки тегов
+            for (const tag of tags) {
+                const button = makeElement("button", "tag");
+                button.type = "button";
+                button.dataset.tag = tag.name.toLowerCase();
 
-            container.append(button);
+                button.append(document.createTextNode(tag.name + " "));
+
+                const count = makeElement(
+                    "span",
+                    "tag-count",
+                    String(tag.notes_count)
+                );
+
+                button.append(count);
+                button.title = `Показать заметки с тегом ${tag.name}`;
+
+                button.addEventListener("click", () => {
+                    filterByTag(tag.name);
+                });
+
+                container.append(button);
             }
         } catch (error) {
             showError(`Не удалось загрузить теги: ${error.message}`);
         }
     }
+
 
     
     async function filterByTag(tagName) {
@@ -1096,6 +1143,30 @@
         await loadNotes(`/notes/search?q=${encodeURIComponent(query)}`);
       }
     );
+
+    
+    async function loadFilteredNotes() {
+        const sortBy = document.querySelector("#sort-by").value;
+        const search = document.querySelector("#search").value.trim();
+        const tag = document.querySelector("#tag-filter").value;
+
+        const params = new URLSearchParams();
+        params.set("sort_by", sortBy);
+
+        if (search) {
+            params.set("q", search);
+        }
+
+        if (tag) {
+            params.set("tag", tag);
+        }
+
+        await loadNotes(`/notes?${params.toString()}`);
+    }
+
+    document.querySelector("#sort-by").addEventListener("change", loadFilteredNotes);
+    document.querySelector("#tag-filter").addEventListener("change", loadFilteredNotes);
+
 
     document.querySelector("#show-all").addEventListener("click", async () => {
       document.querySelector("#search").value = "";

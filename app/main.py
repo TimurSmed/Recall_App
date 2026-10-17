@@ -115,19 +115,49 @@ def create_note(
 
 
 
+
 @app.get("/notes", response_model=list[NoteRead])
 def list_notes(
     db: Annotated[Session, Depends(get_db)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    favorite: bool | None = None,
+    tag: str | None = None,
+    q: str | None = None,
+    sort_by: str = Query(
+        default="created_at",
+        pattern="^(created_at|updated_at|title)$",
+    ),
 ) -> list[dict]:
-    notes = (
-        db.query(Note)
-        .order_by(Note.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
+    query = db.query(Note)
+
+    if favorite is not None:
+        query = query.filter(Note.is_favorite.is_(favorite))
+
+    if tag is not None:
+        query = query.filter(
+            Note.tags.any(Tag.name == tag.strip().lower())
     )
+        
+    if q is not None and q.strip():
+        search_term = f"%{q.strip()}%"
+        query = query.filter(
+            Note.title.ilike(search_term)
+            | Note.content.ilike(search_term)
+            | Note.tags.any(Tag.name.ilike(search_term))
+        )
+
+
+    
+    if sort_by == "title":
+        query = query.order_by(Note.title.asc())
+    elif sort_by == "updated_at":
+        query = query.order_by(Note.updated_at.desc())
+    else:
+        query = query.order_by(Note.created_at.desc())
+
+    notes = query.offset(offset).limit(limit).all()
+
 
     return [note_to_dict(note) for note in notes]
 
@@ -204,6 +234,7 @@ def search_notes(
         .filter(
             Note.title.ilike(search_term)
             | Note.content.ilike(search_term)
+            | Note.tags.any(Tag.name.ilike(search_term))
         )
         .order_by(Note.created_at.desc())
         .all()

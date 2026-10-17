@@ -211,6 +211,124 @@ def test_list_favorite_notes(client):
     assert regular_response.json()["id"] not in favorite_ids
 
 
+
+def test_list_notes_filter_by_favorite(client):
+    regular_id = create_test_note(client, "Regular filter note")
+    favorite_id = create_test_note(client, "Favorite filter note")
+
+    toggle_response = client.patch(f"/notes/{favorite_id}/favorite")
+    assert toggle_response.status_code == 200
+
+    favorite_response = client.get("/notes?favorite=true")
+    regular_response = client.get("/notes?favorite=false")
+
+    assert favorite_response.status_code == 200
+    assert regular_response.status_code == 200
+
+    favorite_ids = [note["id"] for note in favorite_response.json()]
+    regular_ids = [note["id"] for note in regular_response.json()]
+
+    assert favorite_id in favorite_ids
+    assert regular_id not in favorite_ids
+    assert regular_id in regular_ids
+    assert favorite_id not in regular_ids
+
+
+def test_list_notes_filter_by_tag(client):
+    response = client.post(
+        "/notes",
+        json={
+            "title": "Python filter note",
+            "content": "Testing tag filtering",
+            "tags": ["python"],
+        },
+    )
+    assert response.status_code == 201
+    python_note_id = response.json()["id"]
+
+    response = client.get("/notes?tag=python")
+
+    assert response.status_code == 200
+    note_ids = [note["id"] for note in response.json()]
+    assert python_note_id in note_ids
+    assert all(
+        "python" in note["tags"]
+        for note in response.json()
+    )
+
+def test_search_notes_by_tag(client):
+    create_response = client.post(
+        "/notes",
+        json={
+            "title": "A note without the keyword",
+            "content": "Some unrelated content",
+            "tags": ["python"],
+        },
+    )
+    assert create_response.status_code == 201
+    note_id = create_response.json()["id"]
+
+    response = client.get("/notes/search?q=python")
+
+    assert response.status_code == 200
+    note_ids = [note["id"] for note in response.json()]
+    assert note_id in note_ids
+
+
+def test_search_notes_by_tag_case_insensitive(client):
+    create_response = client.post(
+        "/notes",
+        json={
+            "title": "Another unrelated note",
+            "content": "Nothing relevant here",
+            "tags": ["Python"],
+        },
+    )
+    assert create_response.status_code == 201
+    note_id = create_response.json()["id"]
+
+    response = client.get("/notes/search?q=python")
+
+    assert response.status_code == 200
+    note_ids = [note["id"] for note in response.json()]
+    assert note_id in note_ids
+
+
+
+def test_list_notes_filter_by_tag_and_favorite(client):
+    response = client.post(
+        "/notes",
+        json={
+            "title": "Favorite Python note",
+            "content": "Testing combined filters",
+            "tags": ["python"],
+        },
+    )
+    assert response.status_code == 201
+    note_id = response.json()["id"]
+
+    toggle_response = client.patch(f"/notes/{note_id}/favorite")
+    assert toggle_response.status_code == 200
+
+    response = client.get("/notes?favorite=true&tag=python")
+
+    assert response.status_code == 200
+    note_ids = [note["id"] for note in response.json()]
+    assert note_id in note_ids
+    assert all(
+        note["is_favorite"] is True and "python" in note["tags"]
+        for note in response.json()
+    )
+
+
+def test_list_notes_unknown_tag_returns_empty_list(client):
+    response = client.get("/notes?tag=tag-that-does-not-exist")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+
 def create_test_note(client, title):
     response = client.post(
         "/notes",
