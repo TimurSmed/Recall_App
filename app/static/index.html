@@ -1129,21 +1129,12 @@
     document.querySelector("#cancel-button").addEventListener(
       "click", resetForm
     );
-
-    document.querySelector("#search-form").addEventListener(
-      "submit", async (event) => {
+    document.querySelector("#search-form").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const query = document.querySelector("#search").value.trim();
+        await loadFilteredNotes();
+    });
 
-        if (!query) {
-          await loadNotes();
-          return;
-        }
-
-        await loadNotes(`/notes/search?q=${encodeURIComponent(query)}`);
-      }
-    );
-
+    let favoritesOnly = false;
     
     async function loadFilteredNotes() {
         const sortBy = document.querySelector("#sort-by").value;
@@ -1161,25 +1152,33 @@
             params.set("tag", tag);
         }
 
+        if (favoritesOnly) {
+            params.set("favorite", "true");
+        }
+
         await loadNotes(`/notes?${params.toString()}`);
     }
+
 
     document.querySelector("#sort-by").addEventListener("change", loadFilteredNotes);
     document.querySelector("#tag-filter").addEventListener("change", loadFilteredNotes);
 
-
     document.querySelector("#show-all").addEventListener("click", async () => {
-      document.querySelector("#search").value = "";
+        favoritesOnly = false;
+        document.querySelector("#search").value = "";
+        document.querySelector("#tag-filter").value = "";
 
-      await loadNotes("/notes");
-      await loadTags();
+        await loadFilteredNotes();
+        await loadTags();
     });
 
     document.querySelector("#show-favorites").addEventListener("click", async () => {
-      document.querySelector("#search").value = "";
+        favoritesOnly = true;
+        document.querySelector("#search").value = "";
+        document.querySelector("#tag-filter").value = "";
 
-      await loadNotes("/notes/favorites");
-      await loadTags();
+        await loadFilteredNotes();
+        await loadTags();
     });
 
     loadNotes();
