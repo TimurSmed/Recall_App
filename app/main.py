@@ -1,12 +1,14 @@
+from collections import deque
+from pathlib import Path
 from typing import Annotated
 
+import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import text
-from sqlalchemy.orm import Session
+from psycopg import Connection
+from psycopg.rows import dict_row
 
-from app.database import engine, get_db
-from app.models import Note, NoteRelation, Tag
+from app.database import get_db
 from app.schemas import (
     GraphNoteRead,
     GraphRead,
@@ -17,9 +19,6 @@ from app.schemas import (
     RelationRead,
 )
 
-from pathlib import Path
-from collections import deque
-
 app = FastAPI(
     title="Recall",
     description="Personal knowledge management API",
@@ -27,57 +26,71 @@ app = FastAPI(
 )
 
 
-
-def get_or_create_tags(db: Session, tag_names: list[str]) -> list[Tag]:
-    tags = []
-    seen_names = set()
+def get_or_create_tags(conn: Connection, tag_names: list[str]) -> list[str]:
+    """Normalize tag names and ensure each exists, returning unique names."""
+    tags: list[str] = []
+    seen_names: set[str] = set()
 
     for raw_name in tag_names:
-        name = raw_name.strip()
-
-        if not name:
+        name = raw_name.strip().lower()
+        if not name or name in seen_names:
             continue
-
-        normalized_name = name.lower()
-
-        if normalized_name in seen_names:
-            continue
-
-        seen_names.add(normalized_name)
-
-        tag = db.query(Tag).filter(Tag.name == normalized_name).first()
-
-        if tag is None:
-            tag = Tag(name=normalized_name)
-            db.add(tag)
-            db.flush()
-
-        tags.append(tag)
-
+        seen_names.add(name)
+        conn.execute(
+            "INSERT INTO tags (name) VALUES (%s) ON CONFLICT (name) DO NOTHING",
+            (name,),
+        )
+        tags.append(name)
     return tags
 
 
-def note_to_dict(note: Note) -> dict:
-    return {
-        "id": note.id,
-        "title": note.title,
-        "content": note.content,
-        "is_favorite": note.is_favorite,
-        "source_url": note.source_url,
-        "created_at": note.created_at,
-        "updated_at": note.updated_at,
-        "tags": [tag.name for tag in note.tags],
-    }
+def set_note_tags(conn: Connection, note_id: int, tag_names: list[str]) -> list[str]:
+    tags = get_or_create_tags(conn, tag_names)
+    conn.execute("DELETE FROM note_tags WHERE note_id = %s", (note_id,))
+    if tags:
+        conn.execute(
+            """
+            INSERT INTO note_tags (note_id, tag_id)
+            SELECT %s, id FROM tags WHERE name = ANY(%s)
+            ON CONFLICT DO NOTHING
+            """,
+            (note_id, tags),
+        )
+    return tags
 
 
+def fetch_note(conn: Connection, note_id: int) -> dict | None:
+    return conn.execute(
+        """
+        SELECT id, title, content, is_favorite, source_url, created_at, updated_at
+        FROM notes WHERE id = %s
+        """,
+        (note_id,),
+    ).fetchone()
+
+
+def note_to_dict(conn: Connection, note: dict) -> dict:
+    tags = conn.execute(
+        """
+        SELECT t.name
+        FROM tags AS t
+        JOIN note_tags AS nt ON nt.tag_id = t.id
+        WHERE nt.note_id = %s
+        ORDER BY t.name
+        """,
+        (note["id"],),
+    ).fetchall()
+    return {**note, "tags": [row["name"] for row in tags]}
+
+
+def fetch_notes_with_tags(conn: Connection, sql: str, params: tuple = ()) -> list[dict]:
+    rows = conn.execute(sql, params).fetchall()
+    return [note_to_dict(conn, row) for row in rows]
 
 
 @app.get("/")
 def root() -> dict[str, str]:
-    return {
-        "name": "Recall",
-        "status": "running",
-    }
+    return {"name": "Recall", "status": "running"}
 
 
 @app.get("/health")
@@ -86,487 +99,277 @@ def health_check() -> dict[str, str]:
 
 
 @app.get("/health/db")
-def database_health_check() -> dict[str, str]:
-    with engine.connect() as connection:
-        connection.execute(text("SELECT 1"))
-
-    return {
-        "status": "healthy",
-        "database": "connected",
-    }
-
+def database_health_check(
+    conn: Annotated[Connection, Depends(get_db)],
+) -> dict[str, str]:
+    conn.execute("SELECT 1").fetchone()
+    return {"status": "healthy", "database": "connected"}
 
 
 @app.post("/notes", response_model=NoteRead, status_code=status.HTTP_201_CREATED)
 def create_note(
     note_data: NoteCreate,
-    db: Annotated[Session, Depends(get_db)],
+    conn: Annotated[Connection, Depends(get_db)],
 ) -> dict:
     data = note_data.model_dump(exclude={"tags"})
-
-    note = Note(**data)
-    note.tags = get_or_create_tags(db, note_data.tags)
-
-    db.add(note)
-    db.commit()
-    db.refresh(note)
-
-    return note_to_dict(note)
-
-
+    with conn.transaction():
+        row = conn.execute(
+            """
+            INSERT INTO notes (title, content, source_url)
+            VALUES (%s, %s, %s)
+            RETURNING id, title, content, is_favorite, source_url, created_at, updated_at
+            """,
+            (data["title"], data["content"], data.get("source_url")),
+        ).fetchone()
+        set_note_tags(conn, row["id"], note_data.tags)
+        result = note_to_dict(conn, row)
+    return result
 
 
 @app.get("/notes", response_model=list[NoteRead])
 def list_notes(
-    db: Annotated[Session, Depends(get_db)],
+    conn: Annotated[Connection, Depends(get_db)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
     favorite: bool | None = None,
     tag: str | None = None,
     q: str | None = None,
-    sort_by: str = Query(
-        default="created_at",
-        pattern="^(created_at|updated_at|title)$",
-    ),
+    sort_by: str = Query(default="created_at", pattern="^(created_at|updated_at|title)$"),
 ) -> list[dict]:
-    query = db.query(Note)
-
+    conditions: list[str] = []
+    params: list = []
     if favorite is not None:
-        query = query.filter(Note.is_favorite.is_(favorite))
-
+        conditions.append("n.is_favorite = %s")
+        params.append(favorite)
     if tag is not None:
-        query = query.filter(
-            Note.tags.any(Tag.name == tag.strip().lower())
-    )
-        
+        conditions.append("EXISTS (SELECT 1 FROM note_tags nt JOIN tags t ON t.id = nt.tag_id WHERE nt.note_id = n.id AND t.name = %s)")
+        params.append(tag.strip().lower())
     if q is not None and q.strip():
-        search_term = f"%{q.strip()}%"
-        query = query.filter(
-            Note.title.ilike(search_term)
-            | Note.content.ilike(search_term)
-            | Note.tags.any(Tag.name.ilike(search_term))
-        )
-
-
-    
-    if sort_by == "title":
-        query = query.order_by(Note.title.asc())
-    elif sort_by == "updated_at":
-        query = query.order_by(Note.updated_at.desc())
-    else:
-        query = query.order_by(Note.created_at.desc())
-
-    notes = query.offset(offset).limit(limit).all()
-
-
-    return [note_to_dict(note) for note in notes]
+        conditions.append("(n.title ILIKE %s OR n.content ILIKE %s OR EXISTS (SELECT 1 FROM note_tags nt JOIN tags t ON t.id = nt.tag_id WHERE nt.note_id = n.id AND t.name ILIKE %s))")
+        term = f"%{q.strip()}%"
+        params.extend([term, term, term])
+    where_sql = " WHERE " + " AND ".join(conditions) if conditions else ""
+    order_sql = {"title": "n.title ASC", "updated_at": "n.updated_at DESC", "created_at": "n.created_at DESC"}[sort_by]
+    params.extend([limit, offset])
+    return fetch_notes_with_tags(
+        conn,
+        f"SELECT n.id, n.title, n.content, n.is_favorite, n.source_url, n.created_at, n.updated_at FROM notes n{where_sql} ORDER BY {order_sql} LIMIT %s OFFSET %s",
+        tuple(params),
+    )
 
 
 @app.get("/notes/favorites", response_model=list[NoteRead])
-def list_favorite_notes(
-    db: Annotated[Session, Depends(get_db)],
-) -> list[dict]:
-    notes = (
-        db.query(Note)
-        .filter(Note.is_favorite.is_(True))
-        .order_by(Note.created_at.desc())
-        .all()
+def list_favorite_notes(conn: Annotated[Connection, Depends(get_db)]) -> list[dict]:
+    return fetch_notes_with_tags(
+        conn,
+        "SELECT id, title, content, is_favorite, source_url, created_at, updated_at FROM notes WHERE is_favorite = TRUE ORDER BY created_at DESC",
     )
-
-    return [note_to_dict(note) for note in notes]
-
-
 
 
 @app.get("/tags")
-def list_tags(
-    db: Annotated[Session, Depends(get_db)],
-) -> list[dict]:
-    tags = db.query(Tag).order_by(Tag.name).all()
-
-    return [
-        {
-            "id": tag.id,
-            "name": tag.name,
-            "notes_count": len(tag.notes),
-        }
-        for tag in tags
-    ]
+def list_tags(conn: Annotated[Connection, Depends(get_db)]) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT t.id, t.name, COUNT(nt.note_id)::int AS notes_count
+        FROM tags t LEFT JOIN note_tags nt ON nt.tag_id = t.id
+        GROUP BY t.id, t.name ORDER BY t.name
+        """
+    ).fetchall()
+    return [dict(row) for row in rows]
 
 
 @app.get("/tags/{tag_name}/notes", response_model=list[NoteRead])
-def get_notes_by_tag(
-    tag_name: str,
-    db: Annotated[Session, Depends(get_db)],
-) -> list[dict]:
+def get_notes_by_tag(tag_name: str, conn: Annotated[Connection, Depends(get_db)]) -> list[dict]:
     normalized_name = tag_name.strip().lower()
-
-    tag = db.query(Tag).filter(Tag.name == normalized_name).first()
-
-    if tag is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tag not found",
-        )
-
-    notes = (
-        db.query(Note)
-        .join(Note.tags)
-        .filter(Tag.name == normalized_name)
-        .order_by(Note.created_at.desc())
-        .all()
+    exists = conn.execute("SELECT 1 FROM tags WHERE name = %s", (normalized_name,)).fetchone()
+    if exists is None:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    return fetch_notes_with_tags(
+        conn,
+        """SELECT n.id, n.title, n.content, n.is_favorite, n.source_url, n.created_at, n.updated_at
+           FROM notes n JOIN note_tags nt ON nt.note_id = n.id
+           JOIN tags t ON t.id = nt.tag_id WHERE t.name = %s ORDER BY n.created_at DESC""",
+        (normalized_name,),
     )
-
-    return [note_to_dict(note) for note in notes]
-
-
 
 
 @app.get("/notes/search", response_model=list[NoteRead])
 def search_notes(
     q: Annotated[str, Query(min_length=1, description="Search notes by title or content")],
-    db: Annotated[Session, Depends(get_db)],
+    conn: Annotated[Connection, Depends(get_db)],
 ) -> list[dict]:
-    search_term = f"%{q}%"
-
-    notes = (
-        db.query(Note)
-        .filter(
-            Note.title.ilike(search_term)
-            | Note.content.ilike(search_term)
-            | Note.tags.any(Tag.name.ilike(search_term))
-        )
-        .order_by(Note.created_at.desc())
-        .all()
+    term = f"%{q}%"
+    return fetch_notes_with_tags(
+        conn,
+        """SELECT n.id, n.title, n.content, n.is_favorite, n.source_url, n.created_at, n.updated_at
+           FROM notes n WHERE n.title ILIKE %s OR n.content ILIKE %s
+           OR EXISTS (SELECT 1 FROM note_tags nt JOIN tags t ON t.id = nt.tag_id
+                      WHERE nt.note_id = n.id AND t.name ILIKE %s)
+           ORDER BY n.created_at DESC""",
+        (term, term, term),
     )
 
-    return [note_to_dict(note) for note in notes]
 
 @app.get("/notes/{note_id}", response_model=NoteRead)
-def get_note(
-    note_id: int,
-    db: Annotated[Session, Depends(get_db)],
-) -> dict:
-    note = db.get(Note, note_id)
-
+def get_note(note_id: int, conn: Annotated[Connection, Depends(get_db)]) -> dict:
+    note = fetch_note(conn, note_id)
     if note is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Note not found",
-        )
-
-    return note_to_dict(note)
+        raise HTTPException(status_code=404, detail="Note not found")
+    return note_to_dict(conn, note)
 
 
-@app.post(
-    "/notes/{note_id}/relations",
-    response_model=RelationRead,
-    status_code=status.HTTP_201_CREATED,
-)
+@app.post("/notes/{note_id}/relations", response_model=RelationRead, status_code=status.HTTP_201_CREATED)
 def create_note_relation(
     note_id: int,
     relation_data: RelationCreate,
-    db: Annotated[Session, Depends(get_db)],
-) -> NoteRelation:
-    source_note = db.get(Note, note_id)
-
-    if source_note is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Source note not found",
-        )
-
-    target_note = db.get(Note, relation_data.target_note_id)
-
-    if target_note is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Target note not found",
-        )
-
-    if note_id == relation_data.target_note_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A note cannot be related to itself",
-        )
-
-    relation_type = relation_data.relation_type.strip().lower()
-
-    if not relation_type:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Relation type cannot be empty",
-        )
-
-    existing_relation = (
-        db.query(NoteRelation)
-        .filter(
-            NoteRelation.source_note_id == note_id,
-            NoteRelation.target_note_id == relation_data.target_note_id,
-            NoteRelation.relation_type == relation_type,
-        )
-        .first()
-    )
-
-    if existing_relation is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="This relation already exists",
-        )
-
-    relation = NoteRelation(
-        source_note_id=note_id,
-        target_note_id=relation_data.target_note_id,
-        relation_type=relation_type,
-    )
-
-    db.add(relation)
-    db.commit()
-    db.refresh(relation)
-
-    return relation
+    conn: Annotated[Connection, Depends(get_db)],
+) -> dict:
+    with conn.transaction():
+        if fetch_note(conn, note_id) is None:
+            raise HTTPException(status_code=404, detail="Source note not found")
+        if fetch_note(conn, relation_data.target_note_id) is None:
+            raise HTTPException(status_code=404, detail="Target note not found")
+        if note_id == relation_data.target_note_id:
+            raise HTTPException(status_code=400, detail="A note cannot be related to itself")
+        relation_type = relation_data.relation_type.strip().lower()
+        if not relation_type:
+            raise HTTPException(status_code=422, detail="Relation type cannot be empty")
+        try:
+            row = conn.execute(
+                """INSERT INTO note_relations (source_note_id, target_note_id, relation_type)
+                   VALUES (%s, %s, %s)
+                   RETURNING id, source_note_id, target_note_id, relation_type, created_at""",
+                (note_id, relation_data.target_note_id, relation_type),
+            ).fetchone()
+        except psycopg.errors.UniqueViolation:
+            raise HTTPException(status_code=409, detail="This relation already exists") from None
+    return dict(row)
 
 
-@app.get(
-    "/notes/{note_id}/relations",
-    response_model=list[RelationRead],
-)
-def list_note_relations(
-    note_id: int,
-    db: Annotated[Session, Depends(get_db)],
-) -> list[NoteRelation]:
-    note = db.get(Note, note_id)
+@app.get("/notes/{note_id}/relations", response_model=list[RelationRead])
+def list_note_relations(note_id: int, conn: Annotated[Connection, Depends(get_db)]) -> list[dict]:
+    if fetch_note(conn, note_id) is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+    rows = conn.execute(
+        """SELECT id, source_note_id, target_note_id, relation_type, created_at
+           FROM note_relations WHERE source_note_id = %s OR target_note_id = %s ORDER BY id""",
+        (note_id, note_id),
+    ).fetchall()
+    return [dict(row) for row in rows]
 
-    if note is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Note not found",
-        )
 
-    relations = (
-        db.query(NoteRelation)
-        .filter(
-            (NoteRelation.source_note_id == note_id)
-            | (NoteRelation.target_note_id == note_id)
-        )
-        .order_by(NoteRelation.id)
-        .all()
-    )
-
-    return relations
-
-@app.delete(
-    "/notes/{note_id}/relations/{relation_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
+@app.delete("/notes/{note_id}/relations/{relation_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_note_relation(
     note_id: int,
     relation_id: int,
-    db: Annotated[Session, Depends(get_db)],
+    conn: Annotated[Connection, Depends(get_db)],
 ) -> None:
-    relation = (
-        db.query(NoteRelation)
-        .filter(
-            NoteRelation.id == relation_id,
-            (
-                (NoteRelation.source_note_id == note_id)
-                | (NoteRelation.target_note_id == note_id)
-            ),
-        )
-        .first()
-    )
-
-    if relation is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Relation not found",
-        )
-
-    db.delete(relation)
-    db.commit()
+    with conn.transaction():
+        row = conn.execute(
+            """DELETE FROM note_relations WHERE id = %s
+               AND (source_note_id = %s OR target_note_id = %s) RETURNING id""",
+            (relation_id, note_id, note_id),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Relation not found")
 
 
-
-
-@app.get(
-    "/notes/{note_id}/graph",
-    response_model=GraphRead,
-)
+@app.get("/notes/{note_id}/graph", response_model=GraphRead)
 def get_note_graph(
     note_id: int,
-    depth: int = 2,
-    db: Annotated[Session, Depends(get_db)] = None,
+    conn: Annotated[Connection, Depends(get_db)],
+    depth: int = Query(default=2, ge=1, le=5),
 ) -> GraphRead:
-    if depth < 1 or depth > 5:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Depth must be between 1 and 5",
-        )
-
-    start_note = db.get(Note, note_id)
+    start_note = fetch_note(conn, note_id)
     if start_note is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Note not found",
-        )
+        raise HTTPException(status_code=404, detail="Note not found")
 
     visited = {note_id}
     frontier = {note_id}
-    found_notes = []
-    found_relations = {}
+    found_notes: list[GraphNoteRead] = []
+    found_relations: dict[int, dict] = {}
 
     for current_depth in range(depth):
         if not frontier:
             break
-
-        relations = (
-            db.query(NoteRelation)
-            .filter(
-                (NoteRelation.source_note_id.in_(frontier))
-                | (NoteRelation.target_note_id.in_(frontier))
-            )
-            .order_by(NoteRelation.id)
-            .all()
-        )
-
-        next_frontier = set()
-        new_note_ids = set()
-
-        for relation in relations:
-            found_relations[relation.id] = relation
-
-            if relation.source_note_id in frontier:
-                neighbor_id = relation.target_note_id
-            else:
-                neighbor_id = relation.source_note_id
-
+        frontier_ids = list(frontier)
+        rows = conn.execute(
+            """SELECT r.id, r.source_note_id, r.target_note_id, r.relation_type, r.created_at,
+                      CASE WHEN r.source_note_id = ANY(%s) THEN r.target_note_id ELSE r.source_note_id END AS neighbor_id,
+                      n.title AS neighbor_title
+               FROM note_relations r
+               JOIN notes n ON n.id = CASE WHEN r.source_note_id = ANY(%s)
+                                           THEN r.target_note_id ELSE r.source_note_id END
+               WHERE r.source_note_id = ANY(%s) OR r.target_note_id = ANY(%s)
+               ORDER BY r.id""",
+            (frontier_ids, frontier_ids, frontier_ids, frontier_ids),
+        ).fetchall()
+        next_frontier: set[int] = set()
+        for row in rows:
+            relation = {key: row[key] for key in ("id", "source_note_id", "target_note_id", "relation_type", "created_at")}
+            found_relations[row["id"]] = relation
+            neighbor_id = row["neighbor_id"]
             if neighbor_id not in visited:
                 visited.add(neighbor_id)
-                new_note_ids.add(neighbor_id)
                 next_frontier.add(neighbor_id)
-
-        if new_note_ids:
-            neighbors = (
-                db.query(Note)
-                .filter(Note.id.in_(new_note_ids))
-                .all()
-            )
-            neighbors_by_id = {
-                note.id: note for note in neighbors
-            }
-
-            for neighbor_id in new_note_ids:
-                neighbor = neighbors_by_id.get(neighbor_id)
-                if neighbor is None:
-                    continue
-
-                found_notes.append(
-                    GraphNoteRead(
-                        id=neighbor.id,
-                        title=neighbor.title,
-                        depth=current_depth + 1,
-                    )
-                )
-
+                found_notes.append(GraphNoteRead(id=neighbor_id, title=row["neighbor_title"], depth=current_depth + 1))
         frontier = next_frontier
 
     return GraphRead(
         start_note_id=note_id,
         depth=depth,
         notes=found_notes,
-        relations=[
-            RelationRead.model_validate(
-                relation,
-                from_attributes=True,
-            )
-            for relation in found_relations.values()
-        ],
+        relations=[RelationRead(**row) for row in found_relations.values()],
     )
 
 
-
-
 @app.patch("/notes/{note_id}/favorite", response_model=NoteRead)
-def toggle_note_favorite(
-    note_id: int,
-    db: Annotated[Session, Depends(get_db)],
-) -> dict:
-    note = db.get(Note, note_id)
-
-    if note is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Note not found",
-        )
-
-    note.is_favorite = not note.is_favorite
-
-    db.commit()
-    db.refresh(note)
-
-    return note_to_dict(note)
+def toggle_note_favorite(note_id: int, conn: Annotated[Connection, Depends(get_db)]) -> dict:
+    with conn.transaction():
+        row = conn.execute(
+            """UPDATE notes SET is_favorite = NOT is_favorite
+               WHERE id = %s
+               RETURNING id, title, content, is_favorite, source_url, created_at, updated_at""",
+            (note_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Note not found")
+        result = note_to_dict(conn, row)
+    return result
 
 
 @app.put("/notes/{note_id}", response_model=NoteRead)
 def update_note(
     note_id: int,
     note_data: NoteUpdate,
-    db: Annotated[Session, Depends(get_db)],
+    conn: Annotated[Connection, Depends(get_db)],
 ) -> dict:
-    note = db.get(Note, note_id)
-
-    if note is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Note not found",
-        )
-
-    # Обновляем поля заметки, исключая теги
     data = note_data.model_dump(exclude={"tags"})
-
-    for field, value in data.items():
-        setattr(note, field, value)
-
-    # Заменяем теги заметки на переданные
-    note.tags = get_or_create_tags(db, note_data.tags)
-
-    db.commit()
-    db.refresh(note)
-
-    return note_to_dict(note)
-
+    with conn.transaction():
+        current = fetch_note(conn, note_id)
+        if current is None:
+            raise HTTPException(status_code=404, detail="Note not found")
+        row = conn.execute(
+            """UPDATE notes SET title = %s, content = %s, source_url = %s, updated_at = now()
+               WHERE id = %s
+               RETURNING id, title, content, is_favorite, source_url, created_at, updated_at""",
+            (data["title"], data["content"], data.get("source_url"), note_id),
+        ).fetchone()
+        set_note_tags(conn, note_id, note_data.tags)
+        result = note_to_dict(conn, row)
+    return result
 
 
 @app.delete("/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_note(
-    note_id: int,
-    db: Annotated[Session, Depends(get_db)],
-) -> None:
-    note = db.get(Note, note_id)
+def delete_note(note_id: int, conn: Annotated[Connection, Depends(get_db)]) -> None:
+    with conn.transaction():
+        row = conn.execute("DELETE FROM notes WHERE id = %s RETURNING id", (note_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Note not found")
 
-    if note is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Note not found",
-        )
-
-    db.delete(note)
-    db.commit()
 
 app.mount(
     "/ui",
-    StaticFiles(
-        directory=Path(__file__).resolve().parent / "static",
-        html=True,
-    ),
+    StaticFiles(directory=Path(__file__).resolve().parent / "static", html=True),
     name="ui",
 )
-
-
-
-
-
-
-
-
-

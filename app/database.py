@@ -1,43 +1,26 @@
 
 import os
+from collections.abc import Generator
 
+import psycopg
 from dotenv import load_dotenv
-from sqlalchemy import URL, create_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from psycopg import Connection
+from psycopg.rows import dict_row
 
 load_dotenv()
 
-database_url = URL.create(
-    drivername="postgresql+psycopg",
-    username=os.getenv("POSTGRES_USER"),
-    password=os.getenv("POSTGRES_PASSWORD"),
-    host=os.getenv("POSTGRES_HOST", "127.0.0.1"),
-    port=int(os.getenv("POSTGRES_PORT", "5432")),
-    database=os.getenv("POSTGRES_DB", "recall"),
-)
 
-engine = create_engine(database_url)
+def get_db() -> Generator[Connection, None, None]:
+    conn = psycopg.connect(
+        host=os.getenv("POSTGRES_HOST", "127.0.0.1"),
+        port=int(os.getenv("POSTGRES_PORT", "5432")),
+        dbname=os.getenv("POSTGRES_DB", "recall"),
+        user=os.getenv("POSTGRES_USER"),
+        password=os.getenv("POSTGRES_PASSWORD"),
+        row_factory=dict_row,
+    )
 
-SessionLocal = sessionmaker(
-    bind=engine,
-    autoflush=False,
-    autocommit=False,
-)
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-
-from collections.abc import Generator
-from sqlalchemy.orm import Session
-
-
-def get_db() -> Generator[Session, None, None]:
-    db = SessionLocal()
     try:
-        yield db
+        yield conn
     finally:
-        db.close()
-
+        conn.close()
