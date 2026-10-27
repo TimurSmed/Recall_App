@@ -508,6 +508,16 @@
   <div id="graph-canvas">
     <div class="graph-empty">Выбери начальную заметку.</div>
   </div>
+  
+  <div id="graph-note-details" class="panel hidden">
+    <h3 id="graph-note-title"></h3>
+    <div id="graph-note-content" class="note-content"></div>
+    <div id="graph-note-tags" class="tags"></div>
+    <button type="button" id="graph-note-open">
+      Построить граф от этой заметки
+    </button>
+  </div>
+
 </section>
 
 
@@ -668,7 +678,31 @@
         deleteButton.type = "button";
         deleteButton.addEventListener("click", () => deleteNote(note.id));
 
-        actions.append(editButton, deleteButton);
+        const graphButton = makeElement("button", "", "Показать в графе");
+        graphButton.type = "button";
+
+        graphButton.addEventListener("click", async () => {
+          let option = [...graphStartSelect.options].find(
+            option => option.value === String(note.id)
+          );
+
+          if (!option) {
+            option = document.createElement("option");
+            option.value = String(note.id);
+            option.textContent = `#${note.id} — ${note.title}`;
+            graphStartSelect.append(option);
+          }
+
+          graphStartSelect.value = String(note.id);
+          await loadGraph();
+
+          document.querySelector(".graph-panel").scrollIntoView({
+            behavior: "smooth",
+            block: "start"
+          });
+        });
+
+        actions.append(editButton, deleteButton, graphButton);
         card.append(actions);
         notesContainer.append(card);
       }
@@ -678,10 +712,69 @@
     const graphDepthSelect = document.querySelector("#graph-depth");
     const graphStatus = document.querySelector("#graph-status");
     const graphCanvas = document.querySelector("#graph-canvas");
+    const graphNoteDetails = document.querySelector("#graph-note-details");
+    const graphNoteTitle = document.querySelector("#graph-note-title");
+    const graphNoteContent = document.querySelector("#graph-note-content");
+    const graphNoteTags = document.querySelector("#graph-note-tags");
+    const graphNoteOpen = document.querySelector("#graph-note-open");
+
+    let selectedGraphNoteId = null;
+
+    
+    async function showGraphNote(noteId) {
+      try {
+        const note = await api(`/notes/${noteId}`);
+
+        selectedGraphNoteId = note.id;
+        graphNoteTitle.textContent = note.title;
+        graphNoteContent.textContent = note.content;
+
+        graphNoteTags.replaceChildren();
+
+        for (const tag of note.tags ?? []) {
+          graphNoteTags.append(
+            makeElement("span", "tag", tag)
+          );
+        }
+
+        graphNoteDetails.classList.remove("hidden");
+      } catch (error) {
+        graphStatus.textContent =
+          `Не удалось загрузить заметку: ${error.message}`;
+      }
+    }
+
+    graphNoteOpen.addEventListener("click", async () => {
+      if (selectedGraphNoteId === null) {
+        graphStatus.textContent = "Ошибка: заметка не выбрана.";
+        return;
+      }
+
+      graphStartSelect.value = String(selectedGraphNoteId);
+
+      await loadGraph();
+    });
+
 
     async function loadGraphOptions() {
       try {
-        const notes = await api("/notes");
+        const notes = [];
+        let offset = 0;
+        const limit = 100;
+
+        while (true) {
+          const batch = await api(
+            `/notes?limit=${limit}&offset=${offset}`
+          );
+
+          notes.push(...batch);
+
+          if (batch.length < limit) {
+            break;
+          }
+
+          offset += limit;
+        }
 
         graphStartSelect.replaceChildren();
 
@@ -798,34 +891,26 @@
 
           if (!source || !target) continue;
 
-          svg.append(
-            svgElement("line", {
-              x1: source.x,
-              y1: source.y,
-              x2: target.x,
-              y2: target.y,
-              class: "graph-edge"
-            })
-          );
-          
-          
-          const labelX = (source.x + target.x) / 2;
-          const labelY = (source.y + target.y) / 2;
+          const edge = svgElement("line", {
+            x1: source.x,
+            y1: source.y,
+            x2: target.x,
+            y2: target.y,
+            class: "graph-edge"
+          });
 
-          const dx = target.x - source.x;
-          const dy = target.y - source.y;
-          const length = Math.hypot(dx, dy) || 1;
+          edge.style.cursor = "pointer";
+          edge.style.pointerEvents = "stroke";
+          edge.style.strokeWidth = "8";
 
-          const textX = labelX - (dy / length) * 14;
-          const textY = labelY + (dx / length) * 14;
+          edge.addEventListener("click", event => {
+            event.stopPropagation();
 
-          svg.append(svgElement("text", {
-            x: textX,
-            y: textY,
-            class: "graph-edge-label"
-          }, relation.relation_type));
+            graphStatus.textContent =
+              `Тип связи: ${relation.relation_type}`;
+          });
 
-
+          svg.append(edge);
         }
 
         for (const node of nodes) {
@@ -843,8 +928,7 @@
           );
 
           function openFromNode() {
-            graphStartSelect.value = String(node.id);
-            loadGraph();
+            showGraphNote(node.id);
           }
 
           group.addEventListener("click", openFromNode);
@@ -936,17 +1020,45 @@
     loadGraphOptions();
 
 
+    
     async function loadNotes(path = "/notes") {
       currentView = path;
       clearError();
 
       try {
-        const notes = await api(path);
+        let notes;
+
+        if (path === "/notes") {
+          // Загружаем заметки порциями по 100,
+          // пока сервер не вернёт неполную порцию.
+          notes = [];
+          let offset = 0;
+          const limit = 100;
+
+          while (true) {
+            const batch = await api(
+              `/notes?limit=${limit}&offset=${offset}`
+            );
+
+            notes.push(...batch);
+            offset += batch.length;
+
+            if (batch.length < limit) {
+              break;
+            }
+          }
+        } else {
+          // Поиск и избранное пока загружаются
+          // как раньше, по своим адресам.
+          notes = await api(path);
+        }
+
         renderNotes(notes);
       } catch (error) {
         showError(error.message);
       }
     }
+
 
     async function toggleFavorite(noteId) {
       clearError();
