@@ -1028,16 +1028,28 @@
       try {
         let notes;
 
-        if (path === "/notes") {
-          // Загружаем заметки порциями по 100,
-          // пока сервер не вернёт неполную порцию.
+        // Поддерживаем пагинацию для обычного списка
+        // и фильтров, например /notes?favorite=true.
+        if (path === "/notes" || path.startsWith("/notes?")) {
+          const questionIndex = path.indexOf("?");
+          const endpoint =
+            questionIndex === -1 ? path : path.slice(0, questionIndex);
+          const queryString =
+            questionIndex === -1 ? "" : path.slice(questionIndex + 1);
+
+          const baseParams = new URLSearchParams(queryString);
+
           notes = [];
           let offset = 0;
           const limit = 100;
 
           while (true) {
+            const params = new URLSearchParams(baseParams);
+            params.set("limit", String(limit));
+            params.set("offset", String(offset));
+
             const batch = await api(
-              `/notes?limit=${limit}&offset=${offset}`
+              `${endpoint}?${params.toString()}`
             );
 
             notes.push(...batch);
@@ -1048,8 +1060,6 @@
             }
           }
         } else {
-          // Поиск и избранное пока загружаются
-          // как раньше, по своим адресам.
           notes = await api(path);
         }
 
