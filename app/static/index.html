@@ -77,16 +77,12 @@
       border-bottom: 1px solid var(--line);
     }
 
-    .account-tools { position: absolute; top: 12px; right: 0; z-index: 2; }
+    .account-tools { position: absolute; top: 12px; right: 0; }
     .logout-button {
-      position: relative;
-      z-index: 3;
       display: inline-flex; align-items: center; justify-content: center;
       padding: 9px 15px; border: 1px solid var(--line-strong); border-radius: 12px;
       color: var(--muted-strong); text-decoration: none; font-size: 13px;
-      background: rgba(18, 22, 38, .82); transition: .2s ease;
-      cursor: pointer;
-      pointer-events: auto;
+      background: rgba(18, 22, 38, .62); transition: .2s ease;
     }
     .logout-button:hover { color: var(--text); border-color: var(--violet); background: rgba(154,131,255,.12); }
 
@@ -101,8 +97,7 @@
     header::after {
       position: absolute;
       top: 21px;
-      right: 92px;
-      pointer-events: none;
+      right: 0;
       content: "●  PRIVATE WORKSPACE";
       padding: 8px 12px;
       border: 1px solid rgba(101, 217, 237, .2);
@@ -408,6 +403,46 @@
     #graph-note-content { color: #b9c4dd; }
     #graph-note-open { margin-top: 16px; }
 
+    body.modal-open { overflow: hidden; }
+    .relation-modal { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; }
+    .relation-modal.hidden { display: none; }
+    .relation-backdrop { position: absolute; inset: 0; background: rgba(3, 5, 12, .78); backdrop-filter: blur(10px); }
+    .relation-dialog { position: relative; z-index: 1; width: min(100%, 650px); max-height: min(88vh, 820px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 24px; background: linear-gradient(145deg, rgba(22, 28, 47, .98), rgba(10, 14, 26, .98)); box-shadow: 0 30px 100px rgba(0,0,0,.62); }
+    .relation-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 24px 26px 18px; border-bottom: 1px solid var(--line); }
+    .relation-dialog-head h2 { margin: 0 0 4px; font-size: 21px; }
+    .relation-dialog-head p { margin: 0; color: var(--muted); font-size: 13px; }
+    .relation-dialog-body { padding: 20px 26px 24px; overflow: auto; }
+    .relation-dialog label { display: block; margin: 14px 0 7px; color: var(--muted-strong); font-size: 12px; font-weight: 700; }
+    .relation-dialog input, .relation-dialog select { width: 100%; min-height: 44px; padding: 10px 13px; border: 1px solid var(--line-strong); border-radius: 12px; background: #0b1020; color: var(--text); font: inherit; outline: none; }
+    .relation-dialog input:focus, .relation-dialog select:focus { border-color: var(--violet); box-shadow: 0 0 0 3px rgba(154,131,255,.14); }
+    .relation-picker { display: grid; gap: 7px; max-height: 220px; overflow: auto; margin-top: 9px; padding: 3px; }
+    .relation-candidate { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 50px; padding: 10px 13px; text-align: left; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.025); color: var(--text); }
+    .relation-candidate:hover { border-color: rgba(154,131,255,.55); background: rgba(154,131,255,.09); }
+    .relation-candidate.is-selected { border-color: var(--cyan); background: rgba(101,217,237,.10); box-shadow: 0 0 0 1px rgba(101,217,237,.12) inset; }
+    .relation-candidate-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 650; }
+    .relation-candidate-id { flex: 0 0 auto; color: var(--muted); font-size: 11px; }
+    .relation-section-title { margin: 5px 0 8px; font-size: 13px; color: var(--muted-strong); }
+    .relation-list { display: grid; gap: 8px; }
+    .relation-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.025); }
+    .relation-item-main { min-width: 0; display: grid; gap: 2px; }
+    .relation-item-title { overflow: hidden; color: var(--text); font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+    .relation-item-meta { color: var(--muted); font-size: 11px; }
+    .relation-item .danger-button { flex: 0 0 auto; padding: 7px 10px; border-color: rgba(255,126,145,.22); color: #ff9baa; font-size: 11px; }
+    .relation-empty { padding: 13px; border: 1px dashed var(--line-strong); border-radius: 12px; color: var(--muted); font-size: 12px; text-align: center; }
+    .relation-error { min-height: 20px; margin-top: 10px; color: var(--danger); font-size: 12px; }
+    .relation-dialog-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 16px; }
+    .relation-dialog-actions button { min-height: 42px; }
+    .relation-trigger { border-color: rgba(154,131,255,.26); color: var(--violet-bright); }
+    .relation-trigger:hover { border-color: var(--violet); background: rgba(154,131,255,.12); }
+    #graph-note-relate { margin: 16px 8px 0 0; }
+    @media (max-width: 560px) {
+      .relation-modal { padding: 10px; }
+      .relation-dialog { max-height: 94vh; border-radius: 18px; }
+      .relation-dialog-head, .relation-dialog-body { padding-left: 17px; padding-right: 17px; }
+      .relation-dialog-actions { flex-direction: column-reverse; }
+      .relation-dialog-actions button { width: 100%; }
+    }
+
     /* Responsive */
     @media (min-width: 1100px) {
       .container { width: min(1320px, calc(100% - 80px)); }
@@ -423,8 +458,7 @@
 
     @media (max-width: 720px) {
       .container { width: min(100% - 30px, 620px); margin: 28px auto 54px; }
-      header { padding-top: 56px; padding-bottom: 22px; }
-      .account-tools { top: 8px; right: 0; }
+      header { padding-top: 8px; padding-bottom: 22px; }
       header::after { position: static; margin-top: 8px; }
       h1 { font-size: 46px; }
       .panel { padding: 20px; }
@@ -578,6 +612,9 @@
     <button type="button" id="graph-note-open">
       Построить граф от этой заметки
     </button>
+    <button type="button" id="graph-note-relate" class="relation-trigger">
+      Связать с другой заметкой
+    </button>
   </div>
 
 </section>
@@ -588,6 +625,42 @@
 
     </section>
   </main>
+
+  <div id="relation-modal" class="relation-modal hidden" role="dialog" aria-modal="true" aria-labelledby="relation-modal-title" aria-hidden="true">
+    <div class="relation-backdrop" data-relation-close></div>
+    <section class="relation-dialog">
+      <div class="relation-dialog-head">
+        <div>
+          <h2 id="relation-modal-title">Связи заметки</h2>
+          <p id="relation-modal-subtitle">Выбирай только заметки из своего пространства.</p>
+        </div>
+        <button type="button" id="relation-close" aria-label="Закрыть окно">✕</button>
+      </div>
+      <div class="relation-dialog-body">
+        <h3 class="relation-section-title">Уже связанные заметки</h3>
+        <div id="relation-list" class="relation-list"><div class="relation-empty">Загружаем связи…</div></div>
+
+        <label for="relation-search">Добавить связь с заметкой</label>
+        <input id="relation-search" type="search" autocomplete="off" placeholder="Начни вводить название заметки…">
+        <div id="relation-picker" class="relation-picker" role="listbox" aria-label="Твои заметки"></div>
+
+        <label for="relation-type">Тип связи</label>
+        <select id="relation-type">
+          <option value="related">Связана с этой темой</option>
+          <option value="continues">Продолжает эту тему</option>
+          <option value="explains">Объясняет эту тему</option>
+          <option value="example">Является примером</option>
+          <option value="prerequisite">Нужно изучить заранее</option>
+          <option value="contrasts">Противопоставляется</option>
+        </select>
+        <div id="relation-error" class="relation-error" role="status"></div>
+        <div class="relation-dialog-actions">
+          <button type="button" data-relation-close>Закрыть</button>
+          <button type="button" id="relation-create" class="primary" disabled>Создать связь</button>
+        </div>
+      </div>
+    </section>
+  </div>
 
   <script>
     const form = document.querySelector("#note-form");
@@ -764,7 +837,11 @@
           });
         });
 
-        actions.append(editButton, deleteButton, graphButton);
+        const relationButton = makeElement("button", "relation-trigger", "Связать");
+        relationButton.type = "button";
+        relationButton.addEventListener("click", () => openRelationManager(note.id, note.title));
+
+        actions.append(editButton, deleteButton, graphButton, relationButton);
         card.append(actions);
         notesContainer.append(card);
       }
@@ -817,6 +894,209 @@
       await loadGraph();
     });
 
+    const relationModal = document.querySelector("#relation-modal");
+    const relationModalTitle = document.querySelector("#relation-modal-title");
+    const relationModalSubtitle = document.querySelector("#relation-modal-subtitle");
+    const relationList = document.querySelector("#relation-list");
+    const relationSearch = document.querySelector("#relation-search");
+    const relationPicker = document.querySelector("#relation-picker");
+    const relationType = document.querySelector("#relation-type");
+    const relationError = document.querySelector("#relation-error");
+    const relationCreateButton = document.querySelector("#relation-create");
+    const graphNoteRelate = document.querySelector("#graph-note-relate");
+
+    let activeRelationSourceId = null;
+    let activeRelationSourceTitle = "";
+    let relationCandidates = [];
+    let selectedRelationTargetId = null;
+    let activeRelations = [];
+    const relationTypeLabels = {
+      related: "Связана с этой темой",
+      continues: "Продолжает эту тему",
+      explains: "Объясняет эту тему",
+      example: "Является примером",
+      prerequisite: "Нужно изучить заранее",
+      contrasts: "Противопоставляется",
+      depends_on: "Зависит от",
+      learns: "Связана с изучением"
+    };
+
+    async function fetchAllOwnNotes() {
+      const allNotes = [];
+      let offset = 0;
+      const limit = 100;
+      while (true) {
+        const batch = await api(`/notes?limit=${limit}&offset=${offset}`);
+        allNotes.push(...batch);
+        if (batch.length < limit) break;
+        offset += batch.length;
+      }
+      return allNotes;
+    }
+
+    function closeRelationManager() {
+      relationModal.classList.add("hidden");
+      relationModal.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("modal-open");
+      activeRelationSourceId = null;
+      selectedRelationTargetId = null;
+    }
+
+    function renderRelationCandidates() {
+      relationPicker.replaceChildren();
+      const query = relationSearch.value.trim().toLocaleLowerCase("ru-RU");
+      const filtered = relationCandidates.filter(note =>
+        String(note.title).toLocaleLowerCase("ru-RU").includes(query)
+      );
+
+      if (!filtered.length) {
+        relationPicker.append(makeElement(
+          "div",
+          "relation-empty",
+          query ? "Ничего не найдено." : "Нет других заметок для связи. Сначала создай ещё одну заметку."
+        ));
+        relationCreateButton.disabled = true;
+        return;
+      }
+
+      for (const note of filtered) {
+        const button = makeElement("button", "relation-candidate");
+        button.type = "button";
+        button.setAttribute("role", "option");
+        button.setAttribute("aria-selected", String(selectedRelationTargetId === Number(note.id)));
+        if (selectedRelationTargetId === Number(note.id)) button.classList.add("is-selected");
+        button.append(
+          makeElement("span", "relation-candidate-title", note.title),
+          makeElement("span", "relation-candidate-id", `#${note.id}`)
+        );
+        button.addEventListener("click", () => {
+          selectedRelationTargetId = Number(note.id);
+          relationError.textContent = "";
+          renderRelationCandidates();
+        });
+        relationPicker.append(button);
+      }
+      relationCreateButton.disabled = selectedRelationTargetId === null;
+    }
+
+    async function renderExistingRelations() {
+      relationList.replaceChildren();
+      const noteById = new Map(relationCandidates.map(note => [Number(note.id), note]));
+      if (!activeRelations.length) {
+        relationList.append(makeElement("div", "relation-empty", "У этой заметки пока нет связей."));
+        return;
+      }
+
+      for (const relation of activeRelations) {
+        const sourceId = Number(relation.source_note_id);
+        const targetId = Number(relation.target_note_id);
+        const isOutgoing = sourceId === activeRelationSourceId;
+        const otherId = isOutgoing ? targetId : sourceId;
+        const otherNote = noteById.get(otherId);
+
+        const item = makeElement("div", "relation-item");
+        const main = makeElement("div", "relation-item-main");
+        main.append(
+          makeElement("span", "relation-item-title", otherNote?.title || `Заметка #${otherId}`),
+          makeElement("span", "relation-item-meta", `${isOutgoing ? "Исходящая" : "Входящая"} · ${relationTypeLabels[relation.relation_type] || relation.relation_type}`)
+        );
+        const removeButton = makeElement("button", "danger-button", "Удалить");
+        removeButton.type = "button";
+        removeButton.addEventListener("click", async () => {
+          removeButton.disabled = true;
+          try {
+            await api(`/notes/${activeRelationSourceId}/relations/${relation.id}`, { method: "DELETE" });
+            activeRelations = activeRelations.filter(item => item.id !== relation.id);
+            await renderExistingRelations();
+            relationError.textContent = "Связь удалена.";
+            if (graphStartSelect.value === String(activeRelationSourceId)) await loadGraph();
+          } catch (error) {
+            relationError.textContent = error.message;
+            removeButton.disabled = false;
+          }
+        });
+        item.append(main, removeButton);
+        relationList.append(item);
+      }
+    }
+
+    async function openRelationManager(noteId, noteTitle = "") {
+      activeRelationSourceId = Number(noteId);
+      activeRelationSourceTitle = noteTitle;
+      selectedRelationTargetId = null;
+      relationSearch.value = "";
+      relationType.value = "related";
+      relationError.textContent = "";
+      relationCreateButton.disabled = true;
+      relationModalTitle.textContent = "Связи заметки";
+      relationModalSubtitle.textContent = noteTitle || `Настрой связи заметки #${noteId}`;
+      relationList.replaceChildren(makeElement("div", "relation-empty", "Загружаем связи…"));
+      relationPicker.replaceChildren(makeElement("div", "relation-empty", "Загружаем твои заметки…"));
+      relationModal.classList.remove("hidden");
+      relationModal.setAttribute("aria-hidden", "false");
+      document.body.classList.add("modal-open");
+      relationSearch.focus();
+
+      try {
+        const [notes, relations] = await Promise.all([
+          fetchAllOwnNotes(),
+          api(`/notes/${noteId}/relations`)
+        ]);
+        relationCandidates = notes.filter(note => Number(note.id) !== activeRelationSourceId);
+        activeRelations = relations;
+        if (!activeRelationSourceTitle) {
+          const source = notes.find(note => Number(note.id) === activeRelationSourceId);
+          activeRelationSourceTitle = source?.title || `Заметка #${noteId}`;
+          relationModalSubtitle.textContent = activeRelationSourceTitle;
+        }
+        renderRelationCandidates();
+        await renderExistingRelations();
+      } catch (error) {
+        relationError.textContent = `Не удалось загрузить связи: ${error.message}`;
+        relationPicker.replaceChildren();
+        relationList.replaceChildren(makeElement("div", "relation-empty", "Не удалось получить список связей."));
+      }
+    }
+
+    relationSearch.addEventListener("input", () => {
+      selectedRelationTargetId = null;
+      relationCreateButton.disabled = true;
+      renderRelationCandidates();
+    });
+    relationCreateButton.addEventListener("click", async () => {
+      if (activeRelationSourceId === null || selectedRelationTargetId === null) return;
+      relationCreateButton.disabled = true;
+      relationError.textContent = "Создаём связь…";
+      try {
+        await api(`/notes/${activeRelationSourceId}/relations`, {
+          method: "POST",
+          body: JSON.stringify({
+            target_note_id: selectedRelationTargetId,
+            relation_type: relationType.value
+          })
+        });
+        activeRelations = await api(`/notes/${activeRelationSourceId}/relations`);
+        selectedRelationTargetId = null;
+        renderRelationCandidates();
+        await renderExistingRelations();
+        relationError.textContent = "Связь создана.";
+        if (graphStartSelect.value === String(activeRelationSourceId)) await loadGraph();
+      } catch (error) {
+        relationError.textContent = error.message;
+        relationCreateButton.disabled = selectedRelationTargetId === null;
+      }
+    });
+
+    document.querySelectorAll("[data-relation-close]").forEach(element => {
+      element.addEventListener("click", closeRelationManager);
+    });
+    document.querySelector("#relation-close").addEventListener("click", closeRelationManager);
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape" && !relationModal.classList.contains("hidden")) closeRelationManager();
+    });
+    graphNoteRelate.addEventListener("click", () => {
+      if (selectedGraphNoteId !== null) openRelationManager(selectedGraphNoteId, graphNoteTitle.textContent);
+    });
 
     async function loadGraphOptions() {
       try {

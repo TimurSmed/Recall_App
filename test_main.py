@@ -630,3 +630,45 @@ def test_registration_creates_a_separate_account(client):
     assert response.status_code == 201
     assert response.json()["username"] == "new_member"
     assert "recall_session" in response.cookies
+
+
+def test_users_cannot_create_or_read_relations_to_other_users_notes(client, test_database):
+    import os
+    import psycopg
+
+    owner_note = client.post(
+        "/notes",
+        json={"title": "Owner private note", "content": "Only owner", "tags": []},
+    )
+    assert owner_note.status_code == 201
+    owner_note_id = owner_note.json()["id"]
+
+    with psycopg.connect(**test_database["admin_kwargs"]) as admin:
+        second_user = admin.execute(
+            "INSERT INTO users (username, email, password_hash) VALUES (%s, %s, %s) RETURNING id",
+            ("relation_second_user", "relation-second@example.invalid", "unused-test-hash"),
+        ).fetchone()
+        second_user_id = int(second_user["id"])
+
+    original_user_id = os.environ["RECALL_TEST_USER_ID"]
+    try:
+        os.environ["RECALL_TEST_USER_ID"] = str(second_user_id)
+        second_note = client.post(
+            "/notes",
+            json={"title": "Second user's note", "content": "Private", "tags": []},
+        )
+        assert second_note.status_code == 201
+        second_note_id = second_note.json()["id"]
+
+        attempt = client.post(
+            f"/notes/{second_note_id}/relations",
+            json={"target_note_id": owner_note_id, "relation_type": "related"},
+        )
+        assert attempt.status_code == 404
+        assert client.get(f"/notes/{owner_note_id}/relations").status_code == 404
+    finally:
+        os.environ["RECALL_TEST_USER_ID"] = original_user_id
+
+    owner_relations = client.get(f"/notes/{owner_note_id}/relations")
+    assert owner_relations.status_code == 200
+    assert owner_relations.json() == []
