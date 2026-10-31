@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -6,389 +5,436 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Recall — мои заметки</title>
   <style>
-
-    .note-title-row {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 12px;
+    :root {
+      color-scheme: dark;
+      --bg: #080a12;
+      --surface: rgba(17, 21, 35, 0.84);
+      --surface-strong: #121728;
+      --surface-soft: #171d31;
+      --line: rgba(169, 181, 219, 0.13);
+      --line-strong: rgba(169, 181, 219, 0.22);
+      --text: #f2f4ff;
+      --muted: #8992ad;
+      --muted-strong: #abb3cb;
+      --violet: #9a83ff;
+      --violet-bright: #b5a5ff;
+      --cyan: #65d9ed;
+      --pink: #f08bc8;
+      --danger: #ff7e91;
+      --radius-xl: 26px;
+      --radius-lg: 19px;
+      --radius-md: 13px;
+      --shadow: 0 24px 70px rgba(0, 0, 0, .34);
     }
 
-    .note-title-row h3 {
-      flex: 1;
-      min-width: 0;
-    }
+    *, *::before, *::after { box-sizing: border-box; }
 
-    .favorite-button {
-      flex-shrink: 0;
-      padding: 3px 8px;
-      border: none;
-      font-size: 26px;
-      line-height: 1.2;
-      color: #777;
-    }
-
-    .favorite-button:hover {
-      background: #f7f3e8;
-    }
-
-    .favorite-button.is-favorite {
-      color: #d99a00;
-    }
-    
-    * {
-    box-sizing: border-box;
-    }
+    html { scroll-behavior: smooth; }
 
     body {
-    margin: 0;
-    background: #f7f7f8;
-    color: #252525;
-    font-family: "Segoe UI", Arial, sans-serif;
-    line-height: 1.6;
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(ellipse at 8% 4%, rgba(105, 75, 214, .20), transparent 34%),
+        radial-gradient(ellipse at 92% 18%, rgba(37, 155, 184, .12), transparent 30%),
+        radial-gradient(ellipse at 50% 100%, rgba(111, 72, 171, .12), transparent 36%),
+        var(--bg);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.65;
+      letter-spacing: .005em;
+      -webkit-font-smoothing: antialiased;
     }
 
+    body::before {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      content: "";
+      pointer-events: none;
+      opacity: .16;
+      background-image: linear-gradient(rgba(154, 131, 255, .08) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(154, 131, 255, .08) 1px, transparent 1px);
+      background-size: 54px 54px;
+      mask-image: linear-gradient(to bottom, black, transparent 78%);
+    }
+
+    ::selection { color: #fff; background: rgba(139, 112, 255, .45); }
+
     .container {
-    width: min(760px, 92%);
-    margin: 48px auto;
+      width: min(1320px, calc(100% - 56px));
+      margin: 48px auto 88px;
     }
 
     header {
-    margin-bottom: 30px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 7px;
+      margin-bottom: 30px;
+      padding: 12px 0 26px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    header::before {
+      content: "PERSONAL KNOWLEDGE SPACE  /  01";
+      color: var(--cyan);
+      font-size: 10px;
+      font-weight: 750;
+      letter-spacing: .22em;
+    }
+
+    header::after {
+      position: absolute;
+      top: 21px;
+      right: 0;
+      content: "●  PRIVATE WORKSPACE";
+      padding: 8px 12px;
+      border: 1px solid rgba(101, 217, 237, .2);
+      border-radius: 999px;
+      color: #9adce8;
+      background: rgba(33, 107, 123, .12);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .13em;
     }
 
     h1 {
-    margin: 0;
-    font-size: 34px;
-    letter-spacing: -1px;
+      margin: 0;
+      font-size: clamp(42px, 6vw, 66px);
+      font-weight: 780;
+      line-height: 1.02;
+      letter-spacing: -.075em;
+      background: linear-gradient(105deg, #fff 8%, #d8d0ff 48%, #75dced 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
     }
 
     h2 {
-    margin: 0 0 18px;
-    font-size: 21px;
+      margin: 0 0 18px;
+      color: #f0f1ff;
+      font-size: 21px;
+      font-weight: 680;
+      letter-spacing: -.035em;
     }
+
+    h3 { color: #f0f1ff; letter-spacing: -.025em; }
 
     .muted {
-    color: #777;
-    font-size: 14px;
+      color: var(--muted);
+      font-size: 13px;
     }
 
-    .panel,
-    .note {
-    background: #fff;
-    border: 1px solid #e7e7e9;
-    border-radius: 14px;
-    padding: 24px;
-    margin-bottom: 18px;
-    box-shadow: 0 3px 12px rgb(0 0 0 / 3%);
+    header .muted { font-size: 15px; color: #a5acc5; }
+
+    .panel, .note, .tags-panel, .graph-panel {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xl);
+      background: linear-gradient(145deg, rgba(22, 27, 45, .94), rgba(13, 17, 29, .94));
+      box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, .035);
+      backdrop-filter: blur(18px);
+    }
+
+    .panel {
+      margin-bottom: 24px;
+      padding: clamp(22px, 3vw, 34px);
+    }
+
+    /* Form */
+    #form-heading::before {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin: 0 10px 2px 0;
+      border-radius: 50%;
+      content: "";
+      background: var(--violet);
+      box-shadow: 0 0 14px rgba(154, 131, 255, .9);
     }
 
     label {
-    display: block;
-    margin: 12px 0 6px;
-    font-size: 14px;
-    font-weight: 600;
+      display: block;
+      margin: 13px 0 7px;
+      color: #b8c0d9;
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: .12em;
+      text-transform: uppercase;
     }
 
-    input,
-    textarea {
-    display: block;
-    width: 100%;
-    padding: 12px 14px;
-    border: 1px solid #dedee3;
-    border-radius: 9px;
-    background: #fff;
-    color: #252525;
-    font: inherit;
-    outline: none;
-    margin: 0 0 14px;
+    input, textarea, select {
+      display: block;
+      width: 100%;
+      min-width: 0;
+      margin: 0 0 14px;
+      padding: 13px 15px;
+      border: 1px solid rgba(162, 173, 210, .16);
+      border-radius: var(--radius-md);
+      outline: none;
+      color: var(--text);
+      background: rgba(7, 10, 19, .64);
+      font: inherit;
+      font-size: 14px;
+      transition: border-color .2s ease, box-shadow .2s ease, background .2s ease, transform .2s ease;
     }
 
-    input:focus,
-    textarea:focus {
-    border-color: #777;
-    box-shadow: 0 0 0 3px rgb(0 0 0 / 5%);
+    input::placeholder, textarea::placeholder { color: #626d88; }
+
+    input:focus, textarea:focus, select:focus {
+      border-color: rgba(154, 131, 255, .72);
+      background: rgba(13, 16, 29, .96);
+      box-shadow: 0 0 0 4px rgba(129, 105, 240, .12), 0 0 26px rgba(129, 105, 240, .08);
     }
 
-    textarea {
-    min-height: 130px;
-    resize: vertical;
-    }
+    textarea { min-height: 145px; resize: vertical; }
 
     button {
-    padding: 10px 15px;
-    border: 1px solid #dedee3;
-    border-radius: 9px;
-    background: #fff;
-    color: #252525;
-    font: inherit;
-    cursor: pointer;
-    transition: background 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 42px;
+      padding: 10px 16px;
+      border: 1px solid rgba(166, 177, 215, .18);
+      border-radius: 12px;
+      color: #dce1f4;
+      background: linear-gradient(180deg, rgba(39, 46, 69, .9), rgba(27, 33, 52, .9));
+      font: inherit;
+      font-size: 13px;
+      font-weight: 650;
+      cursor: pointer;
+      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, background .18s ease, color .18s ease;
     }
 
     button:hover {
-    background: #f0f0f2;
+      transform: translateY(-1px);
+      border-color: rgba(160, 143, 255, .48);
+      color: #fff;
+      background: linear-gradient(180deg, rgba(54, 59, 88, .98), rgba(35, 41, 65, .98));
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
     }
 
+    button:active { transform: translateY(0) scale(.985); }
+    button:focus-visible { outline: 3px solid rgba(101, 217, 237, .55); outline-offset: 3px; }
+
     button.primary {
-    background: #252525;
-    color: #fff;
-    border-color: #252525;
+      border-color: rgba(170, 151, 255, .62);
+      color: #fff;
+      background: linear-gradient(110deg, #735ce0, #9877f3 58%, #5d9be9);
+      box-shadow: 0 8px 26px rgba(117, 88, 228, .25), inset 0 1px 0 rgba(255,255,255,.22);
     }
 
     button.primary:hover {
-    background: #444;
+      background: linear-gradient(110deg, #826df0, #a58aff 58%, #73b2f4);
+      box-shadow: 0 12px 32px rgba(117, 88, 228, .36);
     }
 
-    .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    align-items: center;
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .section-heading { margin: 34px 0 16px; font-size: 25px; }
+    #search-form { margin-bottom: 18px; }
+    #search { flex: 1; min-width: 220px; margin: 0; }
+
+    /* Notes */
+    #notes {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+      gap: 16px;
+      align-items: start;
     }
 
-    .section-heading {
-    margin: 30px 0 14px;
+    .note {
+      min-width: 0;
+      margin: 0;
+      padding: 22px;
+      border-radius: 19px;
+      background: linear-gradient(150deg, rgba(23, 29, 49, .96), rgba(15, 20, 34, .96));
+      transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease;
+      animation: card-rise .42s both;
     }
 
-    #search-form {
-    margin-bottom: 16px;
+    .note:hover {
+      transform: translateY(-3px);
+      border-color: rgba(154, 131, 255, .34);
+      box-shadow: 0 18px 42px rgba(0, 0, 0, .28), 0 0 28px rgba(122, 99, 232, .07);
     }
 
-    #search {
-    flex: 1;
-    min-width: 180px;
-    margin: 0;
+    @keyframes card-rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
-    .note h3 {
-    margin: 0 0 12px;
-    font-size: 19px;
-    overflow-wrap: anywhere;
+    .note-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .note-title-row h3 { flex: 1; min-width: 0; margin: 0 0 12px; color: #f0efff; font-size: 18px; line-height: 1.35; overflow-wrap: anywhere; }
+
+    .favorite-button {
+      flex-shrink: 0;
+      min-width: 38px;
+      min-height: 38px;
+      padding: 3px 8px;
+      border: 1px solid transparent;
+      border-radius: 11px;
+      color: #74809c;
+      background: rgba(255,255,255,.035);
+      font-size: 24px;
+      line-height: 1.2;
     }
 
-    .note-content {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    }
+    .favorite-button:hover { color: #ffd98a; background: rgba(255, 198, 95, .1); }
+    .favorite-button.is-favorite { color: #ffc96b; text-shadow: 0 0 18px rgba(255, 201, 107, .55); }
+    .note-date { margin: -4px 0 14px; color: #77829f; font-size: 11px; letter-spacing: .02em; }
+    .note-content { color: #c0c7dc; font-size: 14px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .note-source { margin-top: 13px; }
+    .note-source a { color: var(--cyan); font-size: 12px; text-decoration: none; overflow-wrap: anywhere; }
+    .note-source a:hover { color: #b8f5ff; text-decoration: underline; }
 
-    .note-source {
-    margin-top: 12px;
-    }
-
-    .note-source a {
-    color: #555;
-    overflow-wrap: anywhere;
-    }
-
-    .tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px;
-    margin-top: 16px;
-    }
-
-    
+    .tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 16px; }
     .tag {
-    padding: 5px 11px;
-    border: none;
-    border-radius: 20px;
-    background: #f0f0f2;
-    color: #444;
-    font-size: 12px;
-    cursor: pointer;
+      min-height: 28px;
+      padding: 4px 10px;
+      border: 1px solid rgba(145, 154, 194, .13);
+      border-radius: 999px;
+      color: #bdb2ff;
+      background: rgba(129, 105, 240, .10);
+      font-size: 11px;
+      font-weight: 650;
+      cursor: pointer;
     }
-
-    .tag:hover {
-    background: #dedee3;
-    }
-
-
-    .note-actions {
-    margin-top: 18px;
-    padding-top: 14px;
-    border-top: 1px solid #eee;
-    }
+    .tag:hover { border-color: rgba(154, 131, 255, .42); color: #e2dcff; background: rgba(129, 105, 240, .2); }
+    .note-actions { margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--line); }
+    .note-actions button { min-height: 36px; padding: 7px 11px; font-size: 11px; }
 
     .error {
-    color: #b42318;
-    margin-bottom: 12px;
-    }
-
-    .hidden {
-    display: none;
-    }
-
-    .empty {
-    padding: 30px;
-    text-align: center;
-    color: #777;
-    background: #fff;
-    border: 1px dashed #ddd;
-    border-radius: 12px;
-    }
-
-    @media (max-width: 500px) {
-    .container {
-        margin: 28px auto;
-    }
-
-    .panel,
-    .note {
-        padding: 17px;
-    }
-
-    h1 {
-        font-size: 29px;
-    }
-    }
-    
-    .note-date {
-    margin: -6px 0 14px;
-    font-size: 12px;
-    }
-
-    
-    .tags-panel {
-    margin: 20px 0;
-    padding: 18px;
-    background: #fff;
-    border: 1px solid #e7e7e9;
-    border-radius: 12px;
-    }
-
-    .tags-panel h3 {
-    margin: 0 0 12px;
-    font-size: 16px;
-    }
-
-    .all-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    }
-
-    .all-tags .tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    }
-
-    .tag-count {
-    color: #777;
-    font-size: 11px;
-    }
-
-    .graph-panel {
-      margin: 20px 0;
-      padding: 18px;
-      background: #fff;
-      border: 1px solid #e7e7e9;
+      margin-bottom: 14px;
+      padding: 12px 14px;
+      border: 1px solid rgba(255, 126, 145, .28);
       border-radius: 12px;
+      color: #ffb4bf;
+      background: rgba(173, 48, 76, .12);
+      font-size: 13px;
     }
 
-    .graph-controls {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: end;
-      gap: 12px;
-      margin-bottom: 16px;
+    .hidden { display: none !important; }
+    .empty, .graph-empty {
+      padding: 34px 22px;
+      border: 1px dashed rgba(158, 170, 210, .22);
+      border-radius: 16px;
+      color: #8490ad;
+      background: rgba(8, 12, 22, .48);
+      text-align: center;
+      font-size: 13px;
+    }
+    #note-count { margin: 12px 0 18px !important; color: #8f9ab7; }
+
+    /* Tags and filters */
+    .graph-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-bottom: 18px; }
+    .graph-controls > div { min-width: 180px; }
+    .graph-controls label { margin-top: 0; }
+    .graph-controls select { max-width: 100%; margin-bottom: 0; padding: 10px 36px 10px 12px; }
+    .tags-panel { margin: 22px 0; padding: 22px; border-radius: 19px; }
+    .tags-panel h3 { margin: 0 0 14px; font-size: 15px; }
+    .all-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+    .all-tags .tag { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 6px 12px; }
+    .tag-count { color: #8290ae; font-size: 10px; }
+
+    /* Knowledge graph */
+    .graph-panel {
+      margin: 24px 0;
+      padding: clamp(20px, 3vw, 30px);
+      border-color: rgba(143, 128, 239, .22);
+      border-radius: 24px;
+      background:
+        radial-gradient(ellipse at 80% 0%, rgba(83, 73, 173, .14), transparent 40%),
+        linear-gradient(145deg, rgba(20, 25, 43, .97), rgba(10, 15, 27, .98));
+      overflow: hidden;
     }
 
-    .graph-controls label {
-      margin-top: 0;
+    .graph-panel h2 { display: flex; align-items: center; gap: 11px; margin-bottom: 6px; font-size: 24px; }
+    .graph-panel h2::before {
+      width: 10px; height: 10px; flex: 0 0 10px; border-radius: 50%; content: "";
+      background: var(--cyan); box-shadow: 0 0 16px rgba(101, 217, 237, .85);
     }
-
-    .graph-controls select {
-      padding: 10px;
-      border: 1px solid #dedee3;
-      border-radius: 9px;
-      font: inherit;
-      max-width: 100%;
-    }
+    .graph-panel > p { margin: 0 0 22px; }
+    #graph-status { min-height: 22px; margin: 0 0 12px; color: #9da8c5; font-size: 12px; }
 
     #graph-canvas {
+      position: relative;
       width: 100%;
-      min-height: 260px;
-      overflow: hidden;
-      border: 1px solid #eee;
-      border-radius: 10px;
-      background: #fafafa;
+      min-height: 320px;
+      max-height: min(72vh, 760px);
+      overflow: auto;
+      border: 1px solid rgba(130, 146, 199, .15);
+      border-radius: 18px;
+      background:
+        radial-gradient(circle at 50% 48%, rgba(92, 77, 180, .15), transparent 38%),
+        linear-gradient(rgba(128, 144, 194, .055) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(128, 144, 194, .055) 1px, transparent 1px),
+        #090e1b;
+      background-size: auto, 30px 30px, 30px 30px, auto;
+      scrollbar-color: #444b70 #111728;
+      overscroll-behavior: contain;
     }
 
-    #graph-canvas svg {
-      display: block;
-      width: 100%;
-      height: auto;
+    /* SVG keeps its natural dimensions: large graphs scroll instead of shrinking into a knot. */
+    #graph-canvas svg { display: block; width: auto; min-width: 560px; max-width: none; height: auto; overflow: visible; }
+    .graph-edge { fill: none; stroke: #8274d9; stroke-width: 2.2; opacity: .58; filter: drop-shadow(0 0 4px rgba(130, 116, 217, .5)); transition: opacity .2s ease, stroke .2s ease; pointer-events: stroke; cursor: pointer; }
+    .graph-edge:hover { stroke: #78dfee; opacity: 1; stroke-width: 3.2; }
+    .graph-node { fill: #18223c; stroke: #8f83eb; stroke-width: 1.8; filter: drop-shadow(0 0 8px rgba(139, 119, 255, .28)); transition: fill .2s ease, stroke .2s ease, filter .2s ease; }
+    .graph-node-start { fill: #6551c8; stroke: #c2b6ff; filter: drop-shadow(0 0 15px rgba(151, 126, 255, .7)); }
+    .graph-node-group { cursor: pointer; transition: opacity .2s ease; }
+    .graph-node-group:hover .graph-node, .graph-node-group:focus .graph-node { fill: #34366a; stroke: #8be9f4; stroke-width: 2.8; filter: drop-shadow(0 0 14px rgba(101, 217, 237, .56)); }
+    .graph-node-group:focus { outline: none; }
+    .graph-label { fill: #e4e9fb; font-size: 12px; font-weight: 650; text-anchor: middle; }
+    .graph-node-meta { fill: #aab4d3; font-size: 9px; font-weight: 700; letter-spacing: 1px; text-anchor: middle; }
+    .graph-node-start + .graph-node-meta { fill: #e3ddff; }
+    #graph-note-details { margin: 16px 0 0; padding: 20px; border-color: rgba(101, 217, 237, .17); background: rgba(12, 19, 32, .88); }
+    #graph-note-title { margin: 0 0 10px; }
+    #graph-note-content { color: #b9c4dd; }
+    #graph-note-open { margin-top: 16px; }
+
+    /* Responsive */
+    @media (min-width: 1100px) {
+      .container { width: min(1320px, calc(100% - 80px)); }
+      #note-form { display: grid; grid-template-columns: 1fr 1fr; column-gap: 22px; }
+      #form-heading, #error, #note-form label[for="title"], #title,
+      #note-form label[for="content"], #content, #note-form .actions { grid-column: 1 / -1; }
+      #note-form label[for="source-url"] { grid-column: 1; }
+      #source-url { grid-column: 1; }
+      #note-form label[for="tags"] { grid-column: 2; grid-row: 5; }
+      #tags { grid-column: 2; grid-row: 6; }
+      #note-form .actions { grid-row: 7; }
     }
 
-    .graph-edge {
-      stroke: #b8bbc4;
-      stroke-width: 2;
+    @media (max-width: 720px) {
+      .container { width: min(100% - 30px, 620px); margin: 28px auto 54px; }
+      header { padding-top: 8px; padding-bottom: 22px; }
+      header::after { position: static; margin-top: 8px; }
+      h1 { font-size: 46px; }
+      .panel { padding: 20px; }
+      .section-heading { margin-top: 28px; }
+      #notes { grid-template-columns: 1fr; }
+      #search-form { align-items: stretch; }
+      #search { flex-basis: 100%; }
+      .graph-panel { padding: 17px; }
+      .graph-controls { align-items: stretch; }
+      .graph-controls > div { flex: 1 1 100%; }
+      .graph-controls > button { width: 100%; }
+      #graph-canvas { min-height: 260px; }
     }
 
-    
-    .graph-edge-label {
-      fill: #666;
-      font-size: 11px;
-      text-anchor: middle;
-      dominant-baseline: middle;
-      paint-order: stroke;
-      stroke: #fafafa;
-      stroke-width: 4px;
-      stroke-linejoin: round;
-      pointer-events: none;
+    @media (max-width: 420px) {
+      .container { width: calc(100% - 22px); margin-top: 20px; }
+      h1 { font-size: 40px; }
+      .panel, .note, .tags-panel { padding: 17px; border-radius: 17px; }
+      .actions button { flex: 1 1 auto; }
+      .note-actions button { flex: 1 1 100%; }
     }
 
-
-    .graph-node {
-      fill: #fff;
-      stroke: #777;
-      stroke-width: 1.5;
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
     }
-
-    .graph-node-start {
-      fill: #252525;
-      stroke: #252525;
-    }
-
-    .graph-node-group {
-      cursor: pointer;
-      transition: opacity 0.15s ease;
-    }
-
-    .graph-node-group:hover .graph-node {
-      stroke: #2563eb;
-      stroke-width: 3;
-    }
-
-    .graph-node-group:focus .graph-node {
-      stroke: #2563eb;
-      stroke-width: 3;
-    }
-
-    .graph-node-group:focus {
-      outline: none;
-    }
-
-    .graph-label {
-      fill: #252525;
-      font-size: 12px;
-      text-anchor: middle;
-    }
-
-    .graph-label-start {
-      fill: #fff;
-    }
-
-    .graph-empty {
-      padding: 24px;
-      color: #777;
-      text-align: center;
-    }
-
-
-
   </style>
 </head>
 <body>
@@ -406,7 +452,7 @@
       <form id="note-form">
         <label for="title">Название</label>
         <input id="title" maxlength="255" required
-               placeholder="Например, как работает SQLAlchemy">
+               placeholder="Например, как устроен граф заметок">
 
         <label for="content">Содержание</label>
         <textarea id="content" required
@@ -809,16 +855,16 @@
 
         const startOption = graphStartSelect.selectedOptions[0];
         const startTitle = startOption
-          ? startOption.textContent
+          ? startOption.textContent.replace(/^#\d+\s*[—-]\s*/, "")
           : `Заметка #${graph.start_note_id}`;
 
         const nodes = [
-          {
-            id: graph.start_note_id,
-            title: startTitle,
-            depth: 0
-          },
-          ...graph.notes
+          { id: Number(graph.start_note_id), title: startTitle, depth: 0 },
+          ...graph.notes.map(note => ({
+            ...note,
+            id: Number(note.id),
+            depth: Math.max(1, Number(note.depth) || 1)
+          }))
         ];
 
         if (graph.relations.length === 0) {
@@ -832,107 +878,130 @@
           return;
         }
 
-        const width = 720;
-        const height = Math.max(300, nodes.length * 100);
-        const centerX = width / 2;
-        const centerY = height / 2;
-        const radius = Math.min(width * 0.34, height * 0.38);
+        const nodeById = new Map(nodes.map(node => [node.id, node]));
+        const levels = new Map();
+        const neighbors = new Map(nodes.map(node => [node.id, new Set()]));
 
+        for (const node of nodes) {
+          if (!levels.has(node.depth)) levels.set(node.depth, []);
+          levels.get(node.depth).push(node);
+        }
+
+        for (const relation of graph.relations) {
+          const sourceId = Number(relation.source_note_id);
+          const targetId = Number(relation.target_note_id);
+          if (!nodeById.has(sourceId) || !nodeById.has(targetId)) continue;
+          neighbors.get(sourceId).add(targetId);
+          neighbors.get(targetId).add(sourceId);
+        }
+
+        // Order each depth by the average position of its parents from the previous depth.
+        // This reduces crossed lines in layered graphs and keeps sibling nodes apart.
+        const orderById = new Map();
+        const maxDepth = Math.max(...levels.keys());
+        for (let depth = 0; depth <= maxDepth; depth += 1) {
+          const level = levels.get(depth) || [];
+          if (depth > 0) {
+            level.sort((a, b) => {
+              const parentOrder = node => {
+                const parentIndexes = [...neighbors.get(node.id)]
+                  .map(id => nodeById.get(id))
+                  .filter(parent => parent && parent.depth === depth - 1)
+                  .map(parent => orderById.get(parent.id))
+                  .filter(Number.isFinite);
+                return parentIndexes.length
+                  ? parentIndexes.reduce((sum, value) => sum + value, 0) / parentIndexes.length
+                  : Number.MAX_SAFE_INTEGER;
+              };
+              return parentOrder(a) - parentOrder(b)
+                || String(a.title).localeCompare(String(b.title), "ru");
+            });
+          }
+          level.forEach((node, index) => orderById.set(node.id, index));
+        }
+
+        const nodeWidth = 228;
+        const nodeHeight = 76;
+        const columnGap = 112;
+        const rowGap = 42;
+        const horizontalPadding = 58;
+        const verticalPadding = 72;
+        const maxInLevel = Math.max(...[...levels.values()].map(level => level.length));
+        const height = Math.max(440, verticalPadding * 2 + maxInLevel * (nodeHeight + rowGap));
+        const width = horizontalPadding * 2 + (maxDepth + 1) * nodeWidth + maxDepth * columnGap;
         const positions = new Map();
 
-        nodes.forEach((node, index) => {
-          if (index === 0) {
-            positions.set(node.id, { x: centerX, y: centerY });
-            return;
-          }
-
-          const angle =
-            (2 * Math.PI * (index - 1)) / (nodes.length - 1)
-            - Math.PI / 2;
-
-          positions.set(node.id, {
-            x: centerX + radius * Math.cos(angle),
-            y: centerY + radius * Math.sin(angle)
+        for (let depth = 0; depth <= maxDepth; depth += 1) {
+          const level = levels.get(depth) || [];
+          const totalHeight = level.length * nodeHeight + Math.max(0, level.length - 1) * rowGap;
+          const firstY = (height - totalHeight) / 2 + nodeHeight / 2;
+          const x = horizontalPadding + nodeWidth / 2 + depth * (nodeWidth + columnGap);
+          level.forEach((node, index) => {
+            positions.set(node.id, {
+              x,
+              y: firstY + index * (nodeHeight + rowGap)
+            });
           });
-        });
+        }
 
         const svgNS = "http://www.w3.org/2000/svg";
         const svg = document.createElementNS(svgNS, "svg");
         svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+        svg.setAttribute("width", String(width));
+        svg.setAttribute("height", String(height));
         svg.setAttribute("role", "img");
-        svg.setAttribute("aria-label", "Граф связанных заметок");
+        svg.setAttribute("aria-label", "Граф связанных заметок, расположенный по уровням связей");
 
         function svgElement(tag, attributes, text) {
           const element = document.createElementNS(svgNS, tag);
-
           for (const [name, value] of Object.entries(attributes)) {
             element.setAttribute(name, value);
           }
-
-          if (text !== undefined) {
-            element.textContent = text;
-          }
-
+          if (text !== undefined) element.textContent = text;
           return element;
         }
 
-        const nodeIds = new Set(nodes.map(node => node.id));
-      
+        // Draw edges first so that node cards remain visually on top of connections.
         for (const relation of graph.relations) {
-          if (
-            !nodeIds.has(relation.source_note_id) ||
-            !nodeIds.has(relation.target_note_id)
-          ) {
-            continue;
-          }
-
-          const source = positions.get(relation.source_note_id);
-          const target = positions.get(relation.target_note_id);
-
+          const source = positions.get(Number(relation.source_note_id));
+          const target = positions.get(Number(relation.target_note_id));
           if (!source || !target) continue;
 
-          const edge = svgElement("line", {
-            x1: source.x,
-            y1: source.y,
-            x2: target.x,
-            y2: target.y,
-            class: "graph-edge"
+          const direction = target.x >= source.x ? 1 : -1;
+          const startX = source.x + direction * (nodeWidth / 2 - 2);
+          const endX = target.x - direction * (nodeWidth / 2 - 2);
+          const controlX = (startX + endX) / 2;
+          const edge = svgElement("path", {
+            d: `M ${startX} ${source.y} C ${controlX} ${source.y}, ${controlX} ${target.y}, ${endX} ${target.y}`,
+            class: "graph-edge",
+            "data-relation-type": relation.relation_type,
+            "aria-label": `Тип связи: ${relation.relation_type}`
           });
-
-          edge.style.cursor = "pointer";
-          edge.style.pointerEvents = "stroke";
-          edge.style.strokeWidth = "8";
 
           edge.addEventListener("click", event => {
             event.stopPropagation();
-
-            graphStatus.textContent =
-              `Тип связи: ${relation.relation_type}`;
+            graphStatus.textContent = `Тип связи: ${relation.relation_type}`;
           });
-
           svg.append(edge);
+        }
+
+        function shortenTitle(value, maxLength = 28) {
+          const title = String(value || "Без названия").replace(/\s+/g, " ").trim();
+          return title.length > maxLength ? `${title.slice(0, maxLength - 1)}…` : title;
         }
 
         for (const node of nodes) {
           const position = positions.get(node.id);
-          const isStart = node.id === graph.start_note_id;
+          if (!position) continue;
+          const isStart = node.id === Number(graph.start_note_id);
           const group = svgElement("g", {});
           group.setAttribute("class", "graph-node-group");
-
-          group.style.cursor = "pointer";
           group.setAttribute("role", "button");
           group.setAttribute("tabindex", "0");
-          group.setAttribute(
-            "aria-label",
-            `Открыть граф от заметки: ${node.title}`
-          );
+          group.setAttribute("aria-label", `Открыть заметку: ${node.title}`);
 
-          function openFromNode() {
-            showGraphNote(node.id);
-          }
-
+          const openFromNode = () => showGraphNote(node.id);
           group.addEventListener("click", openFromNode);
-
           group.addEventListener("keydown", event => {
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
@@ -941,44 +1010,33 @@
           });
 
           group.append(
-            svgElement("circle", {
-              cx: position.x,
-              cy: position.y,
-              r: 28,
-              class: isStart
-                ? "graph-node graph-node-start"
-                : "graph-node"
-            })
-          );
-
-          group.append(
+            svgElement("rect", {
+              x: position.x - nodeWidth / 2,
+              y: position.y - nodeHeight / 2,
+              width: nodeWidth,
+              height: nodeHeight,
+              rx: 16,
+              class: isStart ? "graph-node graph-node-start" : "graph-node"
+            }),
             svgElement("text", {
               x: position.x,
-              y: position.y + 4,
-              class: isStart
-                ? "graph-label graph-label-start"
-                : "graph-label"
-            }, `#${node.id}`)
-          );
-
-          const label =
-            node.title.length > 24
-              ? `${node.title.slice(0, 21)}...`
-              : node.title;
-
-          group.append(
+              y: position.y - 10,
+              class: "graph-node-meta"
+            }, `${isStart ? "НАЧАЛО" : `УРОВЕНЬ ${node.depth}`}  ·  #${node.id}`),
             svgElement("text", {
               x: position.x,
-              y: position.y + 46,
-              class: "graph-label"
-            }, label)
+              y: position.y + 14,
+              class: isStart ? "graph-label graph-label-start" : "graph-label"
+            }, shortenTitle(node.title))
           );
-
           svg.append(group);
         }
 
         graphCanvas.append(svg);
+        graphCanvas.scrollTop = 0;
+        graphCanvas.scrollLeft = 0;
       }
+
 
 
     async function loadGraph() {
