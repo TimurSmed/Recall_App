@@ -77,6 +77,19 @@
       border-bottom: 1px solid var(--line);
     }
 
+    .account-tools { position: absolute; top: 12px; right: 0; z-index: 2; }
+    .logout-button {
+      position: relative;
+      z-index: 3;
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 9px 15px; border: 1px solid var(--line-strong); border-radius: 12px;
+      color: var(--muted-strong); text-decoration: none; font-size: 13px;
+      background: rgba(18, 22, 38, .82); transition: .2s ease;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+    .logout-button:hover { color: var(--text); border-color: var(--violet); background: rgba(154,131,255,.12); }
+
     header::before {
       content: "PERSONAL KNOWLEDGE SPACE  /  01";
       color: var(--cyan);
@@ -88,7 +101,8 @@
     header::after {
       position: absolute;
       top: 21px;
-      right: 0;
+      right: 92px;
+      pointer-events: none;
       content: "●  PRIVATE WORKSPACE";
       padding: 8px 12px;
       border: 1px solid rgba(101, 217, 237, .2);
@@ -409,7 +423,8 @@
 
     @media (max-width: 720px) {
       .container { width: min(100% - 30px, 620px); margin: 28px auto 54px; }
-      header { padding-top: 8px; padding-bottom: 22px; }
+      header { padding-top: 56px; padding-bottom: 22px; }
+      .account-tools { top: 8px; right: 0; }
       header::after { position: static; margin-top: 8px; }
       h1 { font-size: 46px; }
       .panel { padding: 20px; }
@@ -442,6 +457,7 @@
     <header>
       <h1>Recall</h1>
       <div class="muted">Твоя личная база знаний</div>
+      <div class="account-tools"><a class="logout-button" href="/logout">Выйти</a></div>
     </header>
 
     <section class="panel">

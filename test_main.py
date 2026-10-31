@@ -575,3 +575,58 @@ def test_graph_loads_all_direct_neighbors_in_star_graph(client):
     assert set(notes_by_id) == set(note_ids[1:])
     assert all(note["depth"] == 1 for note in notes_by_id.values())
     assert len(data["relations"]) == 5
+
+
+def test_users_cannot_access_each_others_notes(client, test_database):
+    import psycopg
+
+    owner_note = client.post(
+        "/notes",
+        json={"title": "Private owner note", "content": "Only the owner can read this", "tags": ["private"]},
+    )
+    assert owner_note.status_code == 201
+    owner_note_id = owner_note.json()["id"]
+
+    with psycopg.connect(**test_database["admin_kwargs"]) as conn:
+        second_user = conn.execute(
+            "INSERT INTO users (username, email, password_hash) VALUES (%s, %s, %s) RETURNING id",
+            ("second_user", "second@example.invalid", "unused-test-hash"),
+        ).fetchone()
+        second_user_id = second_user["id"]
+
+    import os
+    original_user_id = os.environ["RECALL_TEST_USER_ID"]
+    try:
+        os.environ["RECALL_TEST_USER_ID"] = str(second_user_id)
+        hidden = client.get(f"/notes/{owner_note_id}")
+        assert hidden.status_code == 404
+        assert client.get("/notes").json() == []
+
+        second_note = client.post(
+            "/notes",
+            json={"title": "Second user's note", "content": "Private", "tags": ["private"]},
+        )
+        assert second_note.status_code == 201
+        second_note_id = second_note.json()["id"]
+    finally:
+        os.environ["RECALL_TEST_USER_ID"] = original_user_id
+
+    visible = client.get("/notes")
+    assert visible.status_code == 200
+    visible_ids = {item["id"] for item in visible.json()}
+    assert owner_note_id in visible_ids
+    assert second_note_id not in visible_ids
+
+
+def test_registration_creates_a_separate_account(client):
+    response = client.post(
+        "/auth/register",
+        json={
+            "username": "new_member",
+            "email": "new-member@example.com",
+            "password": "Long-Unique-Passphrase-42",
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["username"] == "new_member"
+    assert "recall_session" in response.cookies
