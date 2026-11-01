@@ -50,6 +50,8 @@ def test_database() -> dict:
     app_role = os.getenv("POSTGRES_APP_USER", "recall_app")
     admin_kwargs = _admin_kwargs(db_name)
     migrations = sorted(MIGRATIONS_DIR.glob("*.sql"))
+    auth_migrations = [m for m in migrations if m.name in {"006_auth_recovery.sql", "007_oauth_accounts.sql"}]
+    base_migrations = [m for m in migrations if m.name not in {"006_auth_recovery.sql", "007_oauth_accounts.sql"}]
     if not migrations:
         raise RuntimeError(f"No SQL migrations found in {MIGRATIONS_DIR}")
 
@@ -60,7 +62,7 @@ def test_database() -> dict:
         with conn.transaction():
             for table in ("note_relations", "note_tags", "notes", "tags", "users", "schema_migrations"):
                 conn.execute(sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(sql.Identifier(table)))
-            for migration in migrations:
+            for migration in base_migrations:
                 text = migration.read_text(encoding="utf-8-sig")
                 for statement in _sql_statements(text):
                     conn.execute(statement)
@@ -71,7 +73,7 @@ def test_database() -> dict:
                     applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
                 )"""
             )
-            for migration in migrations:
+            for migration in base_migrations:
                 text = migration.read_text(encoding="utf-8-sig")
                 digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
                 conn.execute(
@@ -85,17 +87,35 @@ def test_database() -> dict:
                 owner_email="test-owner@example.invalid",
             )
 
+            # The auth migration depends on the users table created by the
+            # multi-tenant bootstrap, so apply it after that schema helper.
+            for migration in auth_migrations:
+                text = migration.read_text(encoding="utf-8-sig")
+                for statement in _sql_statements(text):
+                    conn.execute(statement)
+                digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+                conn.execute(
+                    "INSERT INTO schema_migrations (version, checksum) VALUES (%s, %s)",
+                    (migration.name, digest),
+                )
+
             role_exists = conn.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (app_role,)).fetchone()
             if not role_exists:
                 raise RuntimeError("Runtime role is missing. Run upgrade_multitenant.py on the application database first.")
             conn.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(sql.Identifier(db_name), sql.Identifier(app_role)))
             conn.execute(sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(sql.Identifier(app_role)))
-            conn.execute(sql.SQL("GRANT SELECT (id, username, email, is_active) ON TABLE public.users TO {}").format(sql.Identifier(app_role)))
+            conn.execute(sql.SQL("GRANT SELECT (id, username, email, is_active, email_verified_at, session_version) ON TABLE public.users TO {}").format(sql.Identifier(app_role)))
             conn.execute(sql.SQL("REVOKE INSERT, UPDATE, DELETE ON TABLE public.users FROM {}").format(sql.Identifier(app_role)))
             for table in ("notes", "tags", "note_tags", "note_relations"):
                 conn.execute(sql.SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.{} TO {}").format(sql.Identifier(table), sql.Identifier(app_role)))
             conn.execute(sql.SQL("GRANT EXECUTE ON FUNCTION public.recall_find_user(TEXT) TO {}").format(sql.Identifier(app_role)))
             conn.execute(sql.SQL("GRANT EXECUTE ON FUNCTION public.recall_register_user(TEXT, TEXT, TEXT) TO {}").format(sql.Identifier(app_role)))
+            conn.execute(sql.SQL("GRANT EXECUTE ON FUNCTION public.recall_issue_auth_token(BIGINT, TEXT, TEXT, TEXT, TIMESTAMPTZ) TO {}").format(sql.Identifier(app_role)))
+            conn.execute(sql.SQL("GRANT EXECUTE ON FUNCTION public.recall_consume_email_verification(TEXT) TO {}").format(sql.Identifier(app_role)))
+            conn.execute(sql.SQL("GRANT EXECUTE ON FUNCTION public.recall_consume_password_reset(TEXT, TEXT) TO {}").format(sql.Identifier(app_role)))
+            conn.execute(sql.SQL("GRANT EXECUTE ON FUNCTION public.recall_find_oauth_user(TEXT, TEXT) TO {}").format(sql.Identifier(app_role)))
+            conn.execute(sql.SQL("GRANT EXECUTE ON FUNCTION public.recall_list_oauth_accounts() TO {}").format(sql.Identifier(app_role)))
+            conn.execute(sql.SQL("GRANT EXECUTE ON FUNCTION public.recall_link_oauth_account(BIGINT, TEXT, TEXT, TEXT, TEXT) TO {}").format(sql.Identifier(app_role)))
             for sequence in ("notes_id_seq", "tags_id_seq", "note_relations_id_seq"):
                 if conn.execute("SELECT to_regclass(%s)", (f"public.{sequence}",)).fetchone()["to_regclass"]:
                     conn.execute(sql.SQL("GRANT USAGE, SELECT ON SEQUENCE public.{} TO {}").format(sql.Identifier(sequence), sql.Identifier(app_role)))
@@ -112,7 +132,7 @@ def client(test_database: dict) -> Iterator[TestClient]:
     admin_kwargs = test_database["admin_kwargs"]
     app_role = test_database["app_role"]
     with psycopg.connect(**admin_kwargs) as conn:
-        conn.execute("TRUNCATE TABLE note_relations, note_tags, notes, tags RESTART IDENTITY CASCADE")
+        conn.execute("TRUNCATE TABLE recall_oauth_accounts, note_relations, note_tags, notes, tags RESTART IDENTITY CASCADE")
 
     def override_get_db() -> Iterator[psycopg.Connection]:
         conn = psycopg.connect(**admin_kwargs)

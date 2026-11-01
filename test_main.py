@@ -632,6 +632,66 @@ def test_registration_creates_a_separate_account(client):
     assert "recall_session" in response.cookies
 
 
+def test_password_recovery_token_is_single_use_and_verifies_email(client, test_database):
+    import hashlib
+    import secrets
+    import psycopg
+
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode("ascii")).hexdigest()
+    with psycopg.connect(**test_database["admin_kwargs"]) as conn:
+        conn.execute(
+            """SELECT * FROM public.recall_issue_auth_token(
+                   %s, NULL, 'password_reset', %s, now() + interval '30 minutes'
+               )""",
+            (test_database["owner_id"], token_hash),
+        ).fetchone()
+
+    response = client.post(
+        "/auth/password/reset",
+        json={"token": token, "password": "New-Unique-Password-2026"},
+    )
+    assert response.status_code == 200
+
+    with psycopg.connect(**test_database["admin_kwargs"]) as conn:
+        user = conn.execute(
+            "SELECT password_hash, session_version, email_verified_at FROM users WHERE id = %s",
+            (test_database["owner_id"],),
+        ).fetchone()
+    from app.main import _verify_password
+
+    assert _verify_password("New-Unique-Password-2026", user["password_hash"])
+    assert user["session_version"] == 1
+    assert user["email_verified_at"] is not None
+
+    reused = client.post(
+        "/auth/password/reset",
+        json={"token": token, "password": "Another-Unique-Password-2026"},
+    )
+    assert reused.status_code == 400
+
+
+def test_email_verification_token_is_single_use(client, test_database):
+    import hashlib
+    import secrets
+    import psycopg
+
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode("ascii")).hexdigest()
+    with psycopg.connect(**test_database["admin_kwargs"]) as conn:
+        conn.execute(
+            """SELECT * FROM public.recall_issue_auth_token(
+                   %s, NULL, 'verify_email', %s, now() + interval '24 hours'
+               )""",
+            (test_database["owner_id"], token_hash),
+        ).fetchone()
+
+    response = client.post("/auth/email/verify", json={"token": token})
+    assert response.status_code == 200
+    reused = client.post("/auth/email/verify", json={"token": token})
+    assert reused.status_code == 400
+
+
 def test_users_cannot_create_or_read_relations_to_other_users_notes(client, test_database):
     import os
     import psycopg

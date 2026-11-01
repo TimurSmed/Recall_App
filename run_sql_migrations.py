@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 import psycopg
+from psycopg import sql as pg_sql
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent
@@ -216,6 +217,32 @@ def main() -> int:
             applied[name] = digest
             print(f"Applied: {name}")
 
+        # Re-apply auth privileges idempotently, using the configured runtime
+        # role rather than assuming its name is always `recall_app`.
+        app_role = os.getenv("POSTGRES_APP_USER", "recall_app").strip()
+        role_exists = conn.execute(
+            "SELECT 1 FROM pg_roles WHERE rolname = %s", (app_role,)
+        ).fetchone()
+        if role_exists and table_exists(conn, "users"):
+            for function_signature in (
+                "recall_issue_auth_token(bigint,text,text,text,timestamptz)",
+                "recall_consume_email_verification(text)",
+                "recall_consume_password_reset(text,text)",
+                "recall_find_user(text)",
+                "recall_find_oauth_user(text,text)",
+                "recall_list_oauth_accounts()",
+                "recall_link_oauth_account(bigint,text,text,text,text)",
+            ):
+                conn.execute(
+                    pg_sql.SQL("GRANT EXECUTE ON FUNCTION public.{} TO {}").format(
+                        pg_sql.SQL(function_signature), pg_sql.Identifier(app_role)
+                    )
+                )
+            conn.execute(
+                pg_sql.SQL("GRANT SELECT (email_verified_at, session_version) ON public.users TO {}").format(
+                    pg_sql.Identifier(app_role)
+                )
+            )
         # Once our own tracker fully represents the schema, the old Alembic
         # version table is no longer required. This drops metadata only, not app data.
         recorded = {

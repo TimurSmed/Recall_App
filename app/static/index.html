@@ -77,12 +77,33 @@
       border-bottom: 1px solid var(--line);
     }
 
-    .account-tools { position: absolute; top: 12px; right: 0; }
+    /* Keep account actions above decorative header pseudo-elements. */
+    .account-tools {
+      position: absolute;
+      top: 12px;
+      right: 0;
+      z-index: 5;
+      pointer-events: auto;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
     .logout-button {
-      display: inline-flex; align-items: center; justify-content: center;
-      padding: 9px 15px; border: 1px solid var(--line-strong); border-radius: 12px;
-      color: var(--muted-strong); text-decoration: none; font-size: 13px;
-      background: rgba(18, 22, 38, .62); transition: .2s ease;
+      position: relative;
+      z-index: 6;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 9px 15px;
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      color: var(--muted-strong);
+      text-decoration: none;
+      font-size: 13px;
+      background: rgba(18, 22, 38, .82);
+      transition: .2s ease;
+      pointer-events: auto;
+      cursor: pointer;
     }
     .logout-button:hover { color: var(--text); border-color: var(--violet); background: rgba(154,131,255,.12); }
 
@@ -97,7 +118,8 @@
     header::after {
       position: absolute;
       top: 21px;
-      right: 0;
+      right: 220px;
+      pointer-events: none;
       content: "●  PRIVATE WORKSPACE";
       padding: 8px 12px;
       border: 1px solid rgba(101, 217, 237, .2);
@@ -459,7 +481,8 @@
     @media (max-width: 720px) {
       .container { width: min(100% - 30px, 620px); margin: 28px auto 54px; }
       header { padding-top: 8px; padding-bottom: 22px; }
-      header::after { position: static; margin-top: 8px; }
+      header::after { position: static; right: auto; margin-top: 8px; pointer-events: none; }
+      .account-tools { top: 8px; right: 0; z-index: 5; }
       h1 { font-size: 46px; }
       .panel { padding: 20px; }
       .section-heading { margin-top: 28px; }
@@ -491,7 +514,7 @@
     <header>
       <h1>Recall</h1>
       <div class="muted">Твоя личная база знаний</div>
-      <div class="account-tools"><a class="logout-button" href="/logout">Выйти</a></div>
+      <div class="account-tools"><a class="logout-button" href="/account/security">Безопасность</a><a class="logout-button" href="/logout">Выйти</a></div>
     </header>
 
     <section class="panel">

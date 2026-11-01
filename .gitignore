@@ -1,5 +1,35 @@
+﻿# Python
 .venv/
+venv/
 __pycache__/
 *.py[cod]
-.env
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.old
+
+# Local databases and backups
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.backup
+backups/
+
+# Temporary archives
+*.zip
+
+# IDE
+.idea/
