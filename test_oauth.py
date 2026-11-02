@@ -115,3 +115,56 @@ def test_oauth_account_link_is_unique_and_visible_only_to_current_user(test_data
         assert len(accounts) == 1
         assert accounts[0]["provider"] == "github"
         assert accounts[0]["provider_username"] == "recall-dev"
+
+
+def test_access_log_filter_redacts_oauth_code_and_state():
+    import logging
+    from app.main import SensitiveQueryStringFilter
+
+    record = logging.LogRecord(
+        name="uvicorn.access",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg='%s - "%s %s HTTP/%s" %d',
+        args=(
+            "127.0.0.1:12345",
+            "GET",
+            "/auth/oauth/github/callback?code=secret-code&state=secret-state&scope=read%3Auser",
+            "1.1",
+            302,
+        ),
+        exc_info=None,
+    )
+
+    assert SensitiveQueryStringFilter().filter(record) is True
+    rendered = record.getMessage()
+    assert "secret-code" not in rendered
+    assert "secret-state" not in rendered
+    assert "code=[REDACTED]" in rendered
+    assert "state=[REDACTED]" in rendered
+    assert "scope=read%3Auser" in rendered
+
+
+def test_access_log_filter_redacts_password_and_email_tokens():
+    import logging
+    from app.main import SensitiveQueryStringFilter
+
+    for path in (
+        "/reset-password?token=password-reset-secret",
+        "/verify-email?token=email-verification-secret",
+    ):
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg='%s - "%s %s HTTP/%s" %d',
+            args=("127.0.0.1:12345", "GET", path, "1.1", 200),
+            exc_info=None,
+        )
+        SensitiveQueryStringFilter().filter(record)
+        rendered = record.getMessage()
+        assert "password-reset-secret" not in rendered
+        assert "email-verification-secret" not in rendered
+        assert "token=[REDACTED]" in rendered
