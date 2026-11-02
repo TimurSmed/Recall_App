@@ -41,11 +41,17 @@ def _sql_statements(text: str) -> list[str]:
 
 @pytest.fixture(scope="session")
 def test_database() -> dict:
-    db_name = os.getenv("POSTGRES_TEST_DB")
+    db_name = (os.getenv("POSTGRES_TEST_DB") or "").strip()
+    production_db = (os.getenv("POSTGRES_DB") or "recall").strip()
     if not db_name:
         raise RuntimeError("POSTGRES_TEST_DB is missing from .env")
-    if db_name == os.getenv("POSTGRES_DB", "recall"):
+    if db_name.casefold() == production_db.casefold():
         raise RuntimeError("Safety stop: POSTGRES_TEST_DB must differ from POSTGRES_DB")
+    if "test" not in db_name.casefold():
+        raise RuntimeError(
+            "Safety stop: POSTGRES_TEST_DB must contain 'test' in its name "
+            "(for example, recall_test). The test fixture drops and recreates tables."
+        )
 
     app_role = os.getenv("POSTGRES_APP_USER", "recall_app")
     admin_kwargs = _admin_kwargs(db_name)
@@ -59,6 +65,12 @@ def test_database() -> dict:
 
     fake_hash = "pbkdf2_sha256$600000$ZmFrZXNhbHQ$ZmFrZWRpZ2VzdA"
     with psycopg.connect(**admin_kwargs) as conn:
+        actual_db = conn.execute("SELECT current_database() AS name").fetchone()["name"]
+        if actual_db.casefold() != db_name.casefold():
+            raise RuntimeError(
+                f"Safety stop: connected to {actual_db!r}, expected test database {db_name!r}."
+            )
+
         with conn.transaction():
             for table in ("note_relations", "note_tags", "notes", "tags", "users", "schema_migrations"):
                 conn.execute(sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(sql.Identifier(table)))
@@ -80,6 +92,14 @@ def test_database() -> dict:
                     "INSERT INTO schema_migrations (version, checksum) VALUES (%s, %s)",
                     (migration.name, digest),
                 )
+
+            # The helper below creates the original pre-recovery function shape
+            # (five return columns). A previous test run may have left the newer
+            # seven-column function behind because dropping tables does not
+            # necessarily drop SQL-language functions. Drop only this function
+            # in the explicitly verified test database before recreating it.
+            conn.execute("DROP FUNCTION IF EXISTS public.recall_find_user(TEXT)")
+
             owner_id = apply_multitenant_schema(
                 conn,
                 owner_username="test_owner",
